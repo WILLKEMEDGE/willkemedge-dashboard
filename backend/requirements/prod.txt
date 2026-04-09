@@ -1,0 +1,4 @@
+-r base.txt
+
+# Production-only extras land here as we add them (Sentry, Celery, etc.)
+sentry-sdk>=2.0
