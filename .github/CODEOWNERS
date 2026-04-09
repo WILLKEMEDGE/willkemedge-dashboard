@@ -1,17 +1,16 @@
 # CODEOWNERS — auto-request reviews based on path
-# Replace handles with real GitHub usernames before merging
 
-# Default reviewers
-*                       @SharonKariuki
+# Default reviewers (both leads see anything not matched below)
+*                       @SharonKariuki @mogambily254
 
 # Backend → Barclay
-/backend/                @SharonKariuki
-/.github/workflows/backend-ci.yml @SharonKariuki
+/backend/                                @mogambily254
+/.github/workflows/backend-ci.yml        @mogambily254
 
 # Frontend → Sharon
-/frontend/               @SharonKariuki
-/.github/workflows/frontend-ci.yml @SharonKariuki
+/frontend/                               @SharonKariuki
+/.github/workflows/frontend-ci.yml       @SharonKariuki
 
-# Plan + docs — both
-/DEVELOPMENT_PLAN.md     @SharonKariuki
-/README.md               @SharonKariuki
+# Plan + docs — both leads
+/DEVELOPMENT_PLAN.md     @SharonKariuki @mogambily254
+/README.md               @SharonKariuki @mogambily254
