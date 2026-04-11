@@ -5,6 +5,8 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import BuildingsPage from "@/pages/BuildingsPage";
 import DashboardPage from "@/pages/DashboardPage";
 import LoginPage from "@/pages/LoginPage";
+import PasswordResetPage from "@/pages/PasswordResetPage";
+import PasswordResetConfirmPage from "@/pages/PasswordResetConfirmPage";
 import PaymentsPage from "@/pages/PaymentsPage";
 import TenantsPage from "@/pages/TenantsPage";
 import UnitsPage from "@/pages/UnitsPage";
@@ -14,6 +16,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<PasswordResetPage />} />
+      <Route path="/reset-password/confirm/:token" element={<PasswordResetConfirmPage />} />
 
       <Route
         element={

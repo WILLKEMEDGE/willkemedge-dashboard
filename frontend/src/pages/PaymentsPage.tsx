@@ -35,6 +35,29 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+// ---------------------------------------------------------------------------
+// Source badge — colour-coded by payment method
+// ---------------------------------------------------------------------------
+const SOURCE_STYLES: Record<string, string> = {
+  mpesa:  "bg-green-100  text-green-800",
+  bank:   "bg-blue-100   text-blue-800",
+  cash:   "bg-amber-100  text-amber-800",
+  cheque: "bg-purple-100 text-purple-800",
+};
+
+function SourceBadge({ source, label }: { source: string; label: string }) {
+  const cls = SOURCE_STYLES[source] ?? "bg-slate-100 text-slate-700";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>
+      {source === "mpesa"  && <span>📱</span>}
+      {source === "bank"   && <span>🏦</span>}
+      {source === "cash"   && <span>💵</span>}
+      {source === "cheque" && <span>📝</span>}
+      {label}
+    </span>
+  );
+}
+
 export default function PaymentsPage() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -224,9 +247,7 @@ export default function PaymentsPage() {
                     {p.period_month}/{p.period_year}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                      {p.source_display}
-                    </span>
+                    <SourceBadge source={p.source} label={p.source_display} />
                   </td>
                   <td className="px-4 py-3 text-slate-400 font-mono text-xs">
                     {p.reference || "—"}
