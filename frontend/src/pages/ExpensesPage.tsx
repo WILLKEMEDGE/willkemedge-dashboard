@@ -31,7 +31,7 @@ const expenseSchema = z.object({
   period_month: z.coerce.number().min(1).max(12),
   period_year: z.coerce.number().min(2000).max(2100),
   notes: z.string().optional(),
-  payment_method: z.enum(["bank", "petty_cash"]).default("bank"),
+  payment_method: z.enum(["bank", "petty_cash"]),
 });
 type ExpenseFormData = z.infer<typeof expenseSchema>;
 
@@ -96,7 +96,7 @@ export default function ExpensesPage() {
       date: now.toISOString().split("T")[0],
       period_month: now.getMonth() + 1,
       period_year: now.getFullYear(),
-      payment_method: "bank" as const,
+      payment_method: "bank" as "bank" | "petty_cash",
     },
   });
 

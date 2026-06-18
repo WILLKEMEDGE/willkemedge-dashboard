@@ -22,6 +22,7 @@ export interface Expense {
   period_month: number;
   period_year: number;
   notes: string;
+  payment_method: "bank" | "petty_cash";
   created_at: string;
   updated_at: string;
 }
@@ -81,6 +82,7 @@ export function useCreateExpense() {
       period_month: number;
       period_year: number;
       notes?: string;
+      payment_method?: "bank" | "petty_cash";
     }) => {
       const { data } = await api.post("/expenses/", payload);
       return data;
