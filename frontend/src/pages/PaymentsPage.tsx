@@ -4,7 +4,7 @@ import { Banknote, Building2, CreditCard, FileText, Mail, Plus, Smartphone, User
 import { cloneElement, isValidElement, useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 
 import ProgressBar from "@/components/ProgressBar";
@@ -45,10 +45,10 @@ const SOURCES = [
 ];
 
 const PAYMENT_TYPES = [
-  { value: "rent",     label: "Rental Income (4000)" },
-  { value: "late_fee", label: "Late Fee (4010)" },
+  { value: "rent",     label: "Rental Income (4110 / 4120)" },
+  { value: "late_fee", label: "Late Fee (4200)" },
   { value: "deposit",  label: "Security Deposit (2100)" },
-  { value: "other",    label: "Other Income" },
+  { value: "other",    label: "Other Income (4150 / 4250)" },
 ] as const;
 
 const now = new Date();
@@ -117,6 +117,7 @@ function Field({
 }
 
 export default function PaymentsPage() {
+  const [searchParams] = useSearchParams();
   const [sourceFilter, setSourceFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
 
