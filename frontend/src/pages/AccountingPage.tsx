@@ -1,5 +1,5 @@
 import {
-  BookOpen, Calculator, ChevronRight, DollarSign, FileBarChart2,
+  BookOpen, Calculator, ChevronRight, DollarSign, Download, FileBarChart2, FileText,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -9,6 +9,52 @@ import {
 } from "@/components/ui";
 import { useReportsAccounting } from "@/hooks/useReports";
 import { cn } from "@/lib/cn";
+
+// ── Export helpers (same as ReportsPage) ────────────────────────────────────
+function exportCSV(filename: string, headers: string[], rows: (string | number)[][]) {
+  const lines = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportPDF(title: string, headers: string[], rows: (string | number)[][]) {
+  const html = `<html><head><title>${title}</title>
+  <style>body{font-family:-apple-system,sans-serif;font-size:12px;margin:24px;color:#181821}
+  h1{font-size:18px;margin-bottom:6px}.sub{color:#636776;font-size:11px;margin-bottom:20px;text-transform:uppercase;letter-spacing:.14em}
+  table{width:100%;border-collapse:collapse}th{background:#F0EDE5;text-align:left;padding:10px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#636776}
+  td{padding:10px 12px;border-bottom:1px solid #E1E1E6}</style></head><body>
+  <div class="sub">Wilkem Ventures Property Suite</div><h1>${title}</h1>
+  <table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+  <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>
+  </table></body></html>`;
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(html); win.document.close(); win.print();
+}
+
+function ExportBar({ title, headers, rows, filename }: {
+  title: string; headers: string[]; rows: (string | number)[][]; filename: string;
+}) {
+  return (
+    <div className="flex gap-2">
+      <button
+        onClick={() => exportCSV(filename, headers, rows)}
+        className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-ink-600 hover:text-ink-900 glass transition-all"
+      >
+        <Download className="h-3.5 w-3.5" />CSV
+      </button>
+      <button
+        onClick={() => exportPDF(title, headers, rows)}
+        className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-ink-600 hover:text-ink-900 glass transition-all"
+      >
+        <FileText className="h-3.5 w-3.5" />PDF
+      </button>
+    </div>
+  );
+}
 
 const selectCls =
   "glass rounded-md px-3 py-2 text-sm text-ink-900 focus:outline-none";
@@ -60,14 +106,27 @@ function StatementRow({ label, value, total }: { label: string; value: string; t
 
 const kes = (n: number) => `KES ${Number(n).toLocaleString()}`;
 
-function BalanceSheetView({ data }: { data: Record<string, unknown> }) {
+function BalanceSheetView({ data, period }: { data: Record<string, unknown>; period: string }) {
   const assets = (data.assets as Record<string, number>) ?? {};
   const liabilities = (data.liabilities as Record<string, number>) ?? {};
   const equity = (data.equity as number) ?? 0;
+  const equityDetail = data.equity_detail as { owner_equity: number; retained_earnings: number } | undefined;
   const totalAssets = Object.values(assets).reduce((a, b) => a + b, 0);
   const totalLiabEquity = Object.values(liabilities).reduce((a, b) => a + b, 0) + equity;
+  const exportRows: (string | number)[][] = [
+    ...Object.entries(assets).map(([k, v]) => [k, v, ""]),
+    ["Total Assets", totalAssets, ""],
+    ...Object.entries(liabilities).map(([k, v]) => ["", "", `${k}: ${v}`]),
+    ["", "", `Retained Earnings: ${equityDetail?.retained_earnings ?? 0}`],
+    ["", "", `Owner Equity: ${equityDetail?.owner_equity ?? equity}`],
+    ["", "", `Total L+E: ${totalLiabEquity}`],
+  ];
   return (
-    <div className="grid gap-x-10 gap-y-6 sm:grid-cols-2">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <ExportBar title={`Balance Sheet ${period}`} headers={["Asset", "Asset Amount", "Liability / Equity"]} rows={exportRows} filename={`balance-sheet-${period.replace("/","-")}.csv`} />
+      </div>
+      <div className="grid gap-x-10 gap-y-6 sm:grid-cols-2">
       <section>
         <p className="mb-1 font-display text-sm font-semibold text-ink-700">Assets</p>
         <div className="divide-y divide-ink-200/70">
@@ -83,10 +142,18 @@ function BalanceSheetView({ data }: { data: Record<string, unknown> }) {
           {Object.entries(liabilities).map(([k, v]) => (
             <StatementRow key={k} label={k} value={kes(v)} />
           ))}
-          <StatementRow label="Owner Equity" value={kes(equity)} />
+          {equityDetail ? (
+            <>
+              <StatementRow label="Owner / Paid-in Capital" value={kes(equityDetail.owner_equity)} />
+              <StatementRow label="Retained Earnings" value={kes(equityDetail.retained_earnings)} />
+            </>
+          ) : (
+            <StatementRow label="Owner Equity" value={kes(equity)} />
+          )}
         </div>
         <StatementRow label="Total Liabilities + Equity" value={kes(totalLiabEquity)} total />
       </section>
+      </div>
     </div>
   );
 }
@@ -100,6 +167,17 @@ function PnLView({ data }: { data: Record<string, unknown> }) {
   const expenses = Number(data.total_expenses ?? 0);
   const net = Number(data.net_profit ?? 0);
   const breakdown = (data.expense_breakdown as { category: string; amount: number }[]) ?? [];
+  const period = String(data.period ?? "");
+  const exportRows: (string | number)[][] = [
+    ["4110", "Residential Rental Income", residential],
+    ["4120", "Commercial Rental Income", commercial],
+    ["4200", "Late Fees", lateFees],
+    ["—", "Other Income", other],
+    ["", "Total Income", income],
+    ...breakdown.map((r) => [r.category, "Expense", r.amount]),
+    ["", "Total Expenses", expenses],
+    ["", "Net Profit", net],
+  ];
   const incomeRows = [
     { code: "4110", label: "Residential Rental Income", amount: residential },
     { code: "4120", label: "Commercial Rental Income", amount: commercial },
@@ -112,6 +190,9 @@ function PnLView({ data }: { data: Record<string, unknown> }) {
         <StatTile label="Total Income" value={kes(income)} tone="sage" />
         <StatTile label="Total Expenses" value={kes(expenses)} tone="coral" />
         <StatTile label="Net Profit" value={kes(net)} tone={net >= 0 ? "sage" : "coral"} />
+      </div>
+      <div className="flex justify-end">
+        <ExportBar title={`Profit & Loss ${period}`} headers={["Code", "Account", "Amount (KES)"]} rows={exportRows} filename={`pnl-${period.replace("/","-")}.csv`} />
       </div>
       <div>
         <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-500">Income</p>
@@ -263,7 +344,7 @@ function BudgetingView({ data }: { data: Record<string, unknown> }) {
         />
       </div>
       <Table>
-        <THead><TR><TH>Building</TH><TH className="text-right">Budgeted</TH><TH className="text-right">Actual</TH><TH className="text-right">Variance</TH></TR></THead>
+        <THead><TR><TH>Account</TH><TH className="text-right">Budgeted (KES)</TH><TH className="text-right">Actual (KES)</TH><TH className="text-right">Variance</TH></TR></THead>
         <TBody>
           {rows.map((r) => (
             <TR key={r.category}>
@@ -285,7 +366,7 @@ function BudgetingView({ data }: { data: Record<string, unknown> }) {
 function AccountingContent({ tab, data }: { tab: TabKey; data: Record<string, unknown> }) {
   const note = typeof data.note === "string" ? data.note : "";
   const body =
-    tab === "balance_sheet" ? <BalanceSheetView data={data} /> :
+    tab === "balance_sheet" ? <BalanceSheetView data={data} period={`${data.period ?? ""}`} /> :
     tab === "pnl"           ? <PnLView data={data} /> :
     tab === "ledger"        ? <LedgerView data={data} /> :
     tab === "coa"           ? <CoAView data={data} /> :

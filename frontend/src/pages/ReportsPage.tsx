@@ -36,24 +36,26 @@ import {
 import { cn } from "@/lib/cn";
 
 const TABS = [
-  { key: "monthly",        label: "Monthly" },
-  { key: "annual",         label: "Annual" },
-  { key: "arrears",        label: "Arrears" },
-  { key: "rent_balances",  label: "Rent Balances" },
-  { key: "overpayments",   label: "Overpayments" },
-  { key: "aging",          label: "Aging Balances" },
-  { key: "expiring",       label: "Expiring Leases" },
-  { key: "tenant",         label: "Tenant History" },
-  { key: "tenant_stmt",    label: "Tenant Statement" },
-  { key: "unit_stmt",      label: "Unit Statement" },
-  { key: "landlord",       label: "Landlord Statement" },
-  { key: "occupancy",      label: "Occupancy" },
-  { key: "vacant",         label: "Vacant Units" },
-  { key: "moves",          label: "Move Log" },
-  { key: "pnl",            label: "P&L" },
-  { key: "trial",          label: "Trial Balance" },
-  { key: "breakdown",      label: "Expense Breakdown" },
+  { key: "monthly",        label: "Monthly",            group: "Income" },
+  { key: "annual",         label: "Annual",             group: "Income" },
+  { key: "pnl",            label: "P&L",                group: "Income" },
+  { key: "trial",          label: "Trial Balance",      group: "Income" },
+  { key: "breakdown",      label: "Expense Breakdown",  group: "Income" },
+  { key: "arrears",        label: "Arrears",            group: "Tenants" },
+  { key: "rent_balances",  label: "Rent Balances",      group: "Tenants" },
+  { key: "overpayments",   label: "Overpayments",       group: "Tenants" },
+  { key: "aging",          label: "Aging Balances",     group: "Tenants" },
+  { key: "tenant",         label: "Tenant History",     group: "Tenants" },
+  { key: "tenant_stmt",    label: "Tenant Statement",   group: "Tenants" },
+  { key: "expiring",       label: "Expiring Leases",    group: "Properties" },
+  { key: "unit_stmt",      label: "Unit Statement",     group: "Properties" },
+  { key: "landlord",       label: "Landlord Statement", group: "Properties" },
+  { key: "occupancy",      label: "Occupancy",          group: "Properties" },
+  { key: "vacant",         label: "Vacant Units",       group: "Properties" },
+  { key: "moves",          label: "Move Log",           group: "Properties" },
 ] as const;
+
+const TAB_GROUPS = ["Income", "Tenants", "Properties"] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -200,16 +202,26 @@ export default function ReportsPage() {
       <PageHeader eyebrow="Analytics" title="Reports"
         description="All financial statements, collections, occupancy — export any view as CSV or PDF instantly." />
 
-      <div className="glass -mx-1 flex gap-1 overflow-x-auto rounded-xl p-1">
-        {TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={cn(
-              "whitespace-nowrap rounded-md px-4 py-2 text-xs font-medium transition-all",
-              tab === t.key ? "bg-ink-900 text-canvas shadow-float dark:bg-ink-100 dark:text-canvas"
-                           : "text-ink-600 hover:text-ink-900",
-            )}>
-            {t.label}
-          </button>
+      <div className="space-y-2">
+        {TAB_GROUPS.map((group) => (
+          <div key={group} className="flex items-center gap-2">
+            <span className="w-20 shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-400">
+              {group}
+            </span>
+            <div className="glass flex flex-1 gap-1 overflow-x-auto rounded-xl p-1">
+              {TABS.filter((t) => t.group === group).map((t) => (
+                <button key={t.key} onClick={() => setTab(t.key)}
+                  className={cn(
+                    "whitespace-nowrap rounded-md px-3 py-2 text-xs font-medium transition-all",
+                    tab === t.key
+                      ? "bg-ink-900 text-canvas shadow-float dark:bg-ink-100 dark:text-canvas"
+                      : "text-ink-600 hover:text-ink-900",
+                  )}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 

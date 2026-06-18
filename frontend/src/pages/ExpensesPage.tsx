@@ -31,6 +31,7 @@ const expenseSchema = z.object({
   period_month: z.coerce.number().min(1).max(12),
   period_year: z.coerce.number().min(2000).max(2100),
   notes: z.string().optional(),
+  payment_method: z.enum(["bank", "petty_cash"]).default("bank"),
 });
 type ExpenseFormData = z.infer<typeof expenseSchema>;
 
@@ -95,6 +96,7 @@ export default function ExpensesPage() {
       date: now.toISOString().split("T")[0],
       period_month: now.getMonth() + 1,
       period_year: now.getFullYear(),
+      payment_method: "bank" as const,
     },
   });
 
@@ -108,6 +110,7 @@ export default function ExpensesPage() {
         building: building && building !== "" ? Number(building) : null,
         reference: values.reference ?? "",
         notes: values.notes ?? "",
+        payment_method: values.payment_method ?? "bank",
       },
       {
         onSuccess: () => {
@@ -308,6 +311,12 @@ export default function ExpensesPage() {
             <Field label="Reference">
               <input {...form.register("reference")} placeholder="Receipt / invoice number" className={inputCls} />
             </Field>
+            <Field label="Paid via *">
+              <select {...form.register("payment_method")} className={inputCls}>
+                <option value="bank">Bank / M-Pesa (credits operating account)</option>
+                <option value="petty_cash">Petty Cash (credits cash float)</option>
+              </select>
+            </Field>
             <Field label="Period">
               <div className="flex gap-2">
                 <select {...form.register("period_month")} className={inputCls}>
@@ -357,7 +366,7 @@ export default function ExpensesPage() {
               <TR>
                 <TH>Date</TH><TH>Building</TH><TH>Category</TH>
                 <TH>Description</TH><TH className="text-right">Amount</TH>
-                <TH>Reference</TH><TH></TH>
+                <TH>Paid via</TH><TH>Reference</TH><TH></TH>
               </TR>
             </THead>
             <TBody>
@@ -371,6 +380,15 @@ export default function ExpensesPage() {
                   <TD className="max-w-xs truncate">{e.description}</TD>
                   <TD className="text-right whitespace-nowrap font-semibold tabular-nums text-status-unpaid">
                     KES {parseFloat(e.amount).toLocaleString()}
+                  </TD>
+                  <TD>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      e.payment_method === "petty_cash"
+                        ? "bg-ochre-50 text-ochre-700"
+                        : "bg-peri-50 text-peri-700"
+                    }`}>
+                      {e.payment_method === "petty_cash" ? "Petty Cash" : "Bank"}
+                    </span>
                   </TD>
                   <TD className="font-mono text-[11px] text-ink-400">{e.reference || "—"}</TD>
                   <TD>

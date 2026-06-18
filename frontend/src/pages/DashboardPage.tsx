@@ -176,7 +176,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link to="/payments">
+          <Link to={`/payments?month=${today.getMonth() + 1}&year=${today.getFullYear()}`}>
             <Button variant="glass" size="md">
               <CreditCard className="h-4 w-4" />
               Record payment
