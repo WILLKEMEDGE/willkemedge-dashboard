@@ -39,6 +39,14 @@ from .models import JournalEntry, JournalLine
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
+def _as_date(value):
+    """Coerce a date value that may be a string (e.g. '2026-04-05') to datetime.date."""
+    import datetime
+    if isinstance(value, datetime.date):
+        return value
+    return datetime.date.fromisoformat(str(value))
+
+
 def _get_account(code: str) -> Account:
     try:
         return Account.objects.get(code=code, is_header=False)
@@ -130,7 +138,7 @@ def post_payment(payment) -> JournalEntry:
     """
     amt = payment.amount
     ptype = payment.payment_type
-    date = payment.payment_date
+    date = _as_date(payment.payment_date)
     building = getattr(payment.tenant.unit, "building", None) if payment.tenant_id else None
 
     if ptype == PaymentType.RENT:
@@ -184,7 +192,7 @@ def reverse_payment(payment) -> JournalEntry:
     """
     amt = payment.amount
     ptype = payment.payment_type
-    date = payment.payment_date
+    date = _as_date(payment.payment_date)
     building = getattr(payment.tenant.unit, "building", None) if payment.tenant_id else None
 
     if ptype == PaymentType.RENT:
@@ -255,7 +263,7 @@ def post_expense(expense) -> JournalEntry:
     memo = f"Expense: {expense.category.name} — {expense.description or ''}"
 
     return _build_entry(
-        date=expense.date,
+        date=_as_date(expense.date),
         memo=memo[:255],
         reference=expense.reference,
         building=expense.building,
@@ -284,7 +292,7 @@ def reverse_expense(expense) -> JournalEntry:
     ]
 
     return _build_entry(
-        date=expense.date,
+        date=_as_date(expense.date),
         memo=f"REVERSAL: {expense.category.name} — {expense.description or ''}",
         reference=expense.reference,
         building=expense.building,

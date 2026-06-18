@@ -144,11 +144,20 @@ class ReportsTests(APITestCase):
         resp = self.client.get("/api/reports/trial-balance/", {"month": MONTH, "year": YEAR})
         assert resp.status_code == 200
         body = resp.json()
+        # Trial balance now sourced from the double-entry ledger.
+        # Debits must equal credits (fundamental accounting identity).
+        assert body["is_balanced"] is True
+        assert body["total_debit"] == body["total_credit"]
+        # 1020 Operating Bank Account receives rent payments (22000 collected)
         accounts = {a["account"]: a for a in body["accounts"]}
-        assert accounts["Cash / Bank (collected)"]["debit"] == 22000.0
-        assert accounts["Accounts Receivable (Arrears)"]["debit"] == 8000.0
-        # Rent revenue credit = expected rent of active tenants = 30000.
-        assert accounts["Rent Revenue"]["credit"] == 30000.0
+        bank_account = accounts.get("1020 Operating Bank Account", {})
+        assert bank_account.get("debit", 0) == 22000.0
+        # 4110 + 4120 income accounts should have matching credits
+        income_credit = sum(
+            a["credit"] for k, a in accounts.items()
+            if k.startswith("4110") or k.startswith("4120")
+        )
+        assert income_credit == 22000.0
 
     # --- Expense breakdown ---------------------------------------------
 
