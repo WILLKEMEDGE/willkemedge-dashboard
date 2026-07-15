@@ -1,28 +1,24 @@
 <!DOCTYPE html>
+{% load static %}
 <html>
 <head>
     <meta charset="utf-8">
     <title>Rent Statement — {{ tenant_name }}</title>
     <style>
         @page { size: a4; margin: 1.4cm; }
-        body { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 9.5px; line-height: 1.35; }
+        body { font-family: "Times New Roman", Times, serif; color: #1a1a1a; font-size: 10px; line-height: 1.35; }
 
         table { border-collapse: collapse; width: 100%; }
         td, th { vertical-align: top; }
 
         /* ── masthead ──────────────────────────────────────────────────── */
         .masthead td { padding: 0; vertical-align: middle; }
-        .logo-box {
-            background-color: #e11d2e; color: #ffffff; text-align: center;
-            padding: 12px 10px; width: 210px;
-        }
-        .logo-box .logo-main { font-size: 26px; font-weight: bold; letter-spacing: 1px; }
-        .logo-box .logo-edge { font-size: 15px; font-weight: bold; font-style: italic; }
-        .logo-box .logo-sub  { font-size: 9px; letter-spacing: 3px; }
+        .logo-cell { width: 220px; }
+        .logo-cell img { width: 210px; height: auto; }
         .entity-box { padding-left: 16px; }
-        .entity-box .entity-name { font-size: 16px; font-weight: bold; }
-        .entity-box .entity-line { font-size: 9.5px; color: #1a1a1a; }
-        .entity-box .entity-contact { font-size: 9px; color: #1d4ed8; }
+        .entity-box .entity-name { font-size: 18px; font-weight: bold; }
+        .entity-box .entity-line { font-size: 11px; font-weight: bold; color: #1a1a1a; }
+        .entity-box .entity-contact { font-size: 10px; font-weight: bold; color: #1d4ed8; }
 
         /* ── title bar ────────────────────────────────────────────────── */
         .titlebar { border-top: 1px solid #999; border-bottom: 1px solid #999; padding: 6px 0; margin-top: 12px; }
@@ -75,9 +71,8 @@
     <!-- ===== masthead ===== -->
     <table class="masthead">
         <tr>
-            <td class="logo-box">
-                <div class="logo-main">WILKEM <span class="logo-edge">edge</span></div>
-                <div class="logo-sub">BUSINESS ARCADE</div>
+            <td class="logo-cell">
+                <img src="{% static 'payments/wilkem-logo.png' %}" alt="Wilkem Edge">
             </td>
             <td class="entity-box">
                 <div class="entity-name">{{ entity_name }}</div>
