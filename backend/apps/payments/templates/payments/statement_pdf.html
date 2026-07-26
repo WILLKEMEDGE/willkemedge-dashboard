@@ -19,6 +19,7 @@
         .entity-cell { padding: 6px 10px; }
         .entity-cell .entity-name { font-size: 15px; font-weight: bold; }
         .entity-cell .entity-line { font-size: 9.5px; line-height: 1.45; }
+        .entity-cell .entity-strong { font-size: 9.5px; font-weight: bold; line-height: 1.45; }
         .entity-cell .entity-contact { font-size: 9.5px; color: #1d4ed8; line-height: 1.45; }
 
         /* ── title bar ────────────────────────────────────────────────── */
@@ -37,8 +38,8 @@
 
         /* ── summary + payment options ────────────────────────────────── */
         .panels { margin-top: 8px; }
-        .panels > tr > td { padding-right: 10px; width: 50%; vertical-align: top; }
-        .panels > tr > td:last-child { padding-right: 0; }
+        .panels td { vertical-align: top; }
+        .panels .p-gap { width: 76px; }   /* ~2cm gap between the two columns */
         .panel-title { font-weight: bold; font-size: 11px; margin-bottom: 4px; }
         .panel-title.blue { color: #1d4ed8; font-style: italic; }
 
@@ -46,10 +47,9 @@
         .summary-tbl .amt { text-align: right; }
         .summary-tbl .grand td { font-weight: bold; }
 
-        .pay-tbl td { padding: 1px 4px; font-size: 9.5px; }
-        .pay-tbl .k { font-style: italic; width: 96px; }
+        .pay-tbl td { border: 1px solid #000000; padding: 4px 8px; font-size: 9.5px; }
+        .pay-tbl .k { font-style: italic; width: 100px; }
         .pay-tbl .v { font-weight: bold; }
-        .pay-tbl .full { font-style: italic; }
         .pay-tbl .full b { font-weight: bold; }
 
         .note { border: 1px solid #000000; padding: 5px 8px; margin-top: 8px; font-size: 8.5px; font-style: italic; }
@@ -114,9 +114,9 @@
     </table>
 
     <!-- ===== summary + payment options ===== -->
-    <table class="panels">
+    <table class="panels" style="width: 700px;">
         <tr>
-            <td>
+            <td class="p-left" style="width: 312px;">
                 <div class="panel-title">Statement Summary</div>
                 <table class="summary-tbl">
                     <tr>
@@ -139,8 +139,9 @@
                     </tr>
                 </table>
             </td>
-            <td>
-                <div class="panel-title blue">Payment options</div>
+            <td class="p-gap"></td>
+            <td class="p-right" style="width: 312px;">
+                <div class="panel-title">Payment options</div>
                 <table class="pay-tbl">
                     {% if has_bank %}
                     <tr><td class="k">Bank &amp; Branch:</td>
