@@ -166,6 +166,38 @@ class TestOpeningPosition:
 
         assert _july(flats["owing"]).expected_rent == D("22000.00"), "a real billed month was clobbered"
 
+    def test_a_brought_forward_that_was_not_carried_is_flagged(self, flats, monkeypatch, capsys):
+        """Leaving the b/f uncarried is safe. Leaving it unsaid is not.
+
+        The roll then starts from zero and every balance after it is out by the
+        b/f — MR304 read 22,000 against a statement saying 7,000 for exactly
+        this reason, and the run that caused it said only "skip".
+        """
+        Arrears.objects.create(
+            tenant=flats["owing"], period_year=2026, period_month=7,
+            expected_rent=D("22000"), expected_vat=D(0), amount_paid=D(0), balance=D("22000"),
+        )
+        _stmt(monkeypatch, [_row(flats["owing"], 6000, 22000)])
+
+        call_command("reconcile_matasia_residential", "--apply")
+
+        out = capsys.readouterr().out
+        assert "FLAG" in out
+        assert "6000" in out
+        assert "STILL UNRECONCILED" in out
+
+    def test_a_zero_brought_forward_is_not_flagged(self, flats, monkeypatch, capsys):
+        """Nothing to carry is not a discrepancy, billed July row or not."""
+        Arrears.objects.create(
+            tenant=flats["owing"], period_year=2026, period_month=7,
+            expected_rent=D("22000"), expected_vat=D(0), amount_paid=D(0), balance=D("22000"),
+        )
+        _stmt(monkeypatch, [_row(flats["owing"], 0, 22000)])
+
+        call_command("reconcile_matasia_residential", "--apply")
+
+        assert "STILL UNRECONCILED" not in capsys.readouterr().out
+
     def test_a_july_utility_charge_blocks_the_seed(self, flats, monkeypatch):
         """Seeding a closing position on top of a July charge double-counts it."""
         UtilityCharge.objects.create(
