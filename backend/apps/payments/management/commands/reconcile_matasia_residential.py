@@ -142,9 +142,20 @@ class Command(BaseCommand):
     def _note(self, text):
         self.stdout.write(self.style.NOTICE(f"  note  {text}"))
 
+    def _flag(self, text):
+        """A discrepancy the run could not resolve. Repeated in the summary.
+
+        Distinct from ``_skip``, which means "already done, nothing to do". A
+        flag means the ledger is knowingly left disagreeing with the statement,
+        and someone has to decide what to do about it.
+        """
+        self.stdout.write(self.style.ERROR(f"  FLAG  {text}"))
+        self.unreconciled.append(text)
+
     def handle(self, *args, **opts):
         self.apply = opts["apply"]
         self.changes = 0
+        self.unreconciled = []
 
         # -- pre-flight: every id must sit on the unit the statement names ----
         wrong = []
@@ -185,6 +196,12 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.SUCCESS(f"\nApplied {self.changes} change(s)."))
 
+        # Last, so it is the part still on screen when the run ends.
+        if self.unreconciled:
+            self._head(f"STILL UNRECONCILED — {len(self.unreconciled)} row(s) need a decision")
+            for text in self.unreconciled:
+                self.stdout.write(self.style.ERROR(f"  {text}"))
+
     # -- plumbing -----------------------------------------------------------
 
     def _resolve(self, tid, label):
@@ -214,13 +231,25 @@ class Command(BaseCommand):
         from apps.payments.services import process_payment
 
         year, month = JUL
+        if bf == 0:
+            self._skip(f"{label} {tenant.full_name}: nothing brought forward")
+            return
+
+        # July is where the opening position goes, but a tenancy the billing run
+        # already reached has a real July row there — and overwriting a billed
+        # month with a brought-forward figure would destroy the charge. So it is
+        # left alone. What must NOT happen quietly is the B/Forward going
+        # nowhere: the roll then starts from zero and every balance after it is
+        # out by exactly this figure, which is how MR304 came to read 22,000
+        # against a statement saying 7,000. Flag it and let a human decide.
         if Arrears.objects.filter(
             tenant=tenant, period_year=year, period_month=month
         ).exists():
-            self._skip(f"{label} {tenant.full_name}: July row already exists — leaving it alone")
-            return
-        if bf == 0:
-            self._skip(f"{label} {tenant.full_name}: nothing brought forward")
+            self._flag(
+                f"{label} {tenant.full_name}: {month}/{year} is already a billed month, so the "
+                f"statement's B/Forward of {bf} was NOT carried — every balance from {month}/{year} "
+                f"on is out by {bf}. Seed the opening in an earlier month, or reconcile by hand."
+            )
             return
 
         # The B/Forward is a closing position: it already contains every charge
