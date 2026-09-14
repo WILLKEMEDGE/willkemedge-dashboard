@@ -82,3 +82,13 @@ frontend/.cache/
 .claude/
 .agents/
 skills-lock.json
+
+# ----- Local scratch / tenant data (NEVER COMMIT) -----
+*.xlsx
+*.xls
+documents/
+backend/.env.bak-*
+backend/_*.py
+backend/_*.bat
+backend/apps/**/management/commands/_*.py
+backend/property_roll.csv
