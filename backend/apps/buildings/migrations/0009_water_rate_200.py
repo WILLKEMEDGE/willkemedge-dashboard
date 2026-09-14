@@ -2,22 +2,24 @@ from decimal import Decimal
 
 from django.db import migrations, models
 
-OLD_RATE = Decimal("150.00")
-NEW_RATE = Decimal("200.00")
+DEFAULT_RATE = Decimal("150.00")
+MATASIA_RATE = Decimal("200.00")
 
 
-def raise_rate(apps, schema_editor):
-    """Move every building still on the old 150/unit tariff to 200/unit.
+def raise_matasia_rate(apps, schema_editor):
+    """Set the water tariff to 200/unit for the Matasia properties only.
 
-    Buildings deliberately set to some other rate are left alone.
+    Donholm and every other building keep the 150/unit default — this must
+    NOT be a blanket rate change (a prior version of this migration
+    incorrectly raised every building still on the old default).
     """
     Building = apps.get_model("buildings", "Building")
-    Building.objects.filter(water_rate_per_unit=OLD_RATE).update(water_rate_per_unit=NEW_RATE)
+    Building.objects.filter(name__icontains="Matasia").update(water_rate_per_unit=MATASIA_RATE)
 
 
-def lower_rate(apps, schema_editor):
+def lower_matasia_rate(apps, schema_editor):
     Building = apps.get_model("buildings", "Building")
-    Building.objects.filter(water_rate_per_unit=NEW_RATE).update(water_rate_per_unit=OLD_RATE)
+    Building.objects.filter(name__icontains="Matasia").update(water_rate_per_unit=DEFAULT_RATE)
 
 
 class Migration(migrations.Migration):
@@ -30,7 +32,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='building',
             name='water_rate_per_unit',
-            field=models.DecimalField(decimal_places=2, default=Decimal('200.00'), help_text='Tariff charged per unit of water consumed (KES). Donholm bills at 200/unit.', max_digits=8),
+            field=models.DecimalField(decimal_places=2, default=Decimal('150.00'), help_text='Tariff charged per unit of water consumed (KES). Matasia properties bill at 200/unit; other properties default to 150.', max_digits=8),
         ),
-        migrations.RunPython(raise_rate, lower_rate),
+        migrations.RunPython(raise_matasia_rate, lower_matasia_rate),
     ]

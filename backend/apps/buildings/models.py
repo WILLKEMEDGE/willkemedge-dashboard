@@ -87,8 +87,8 @@ class Building(models.Model):
     contact_email = models.EmailField(blank=True)
 
     water_rate_per_unit = models.DecimalField(
-        max_digits=8, decimal_places=2, default=Decimal("200.00"),
-        help_text="Tariff charged per unit of water consumed (KES). Donholm bills at 200/unit.",
+        max_digits=8, decimal_places=2, default=Decimal("150.00"),
+        help_text="Tariff charged per unit of water consumed (KES). Matasia properties bill at 200/unit; other properties default to 150.",
     )
 
     paybill_number = models.CharField(
@@ -188,6 +188,12 @@ class Unit(models.Model):
             # payment reference like '90290#DON1A' maps to exactly one unit on any
             # channel — no ambiguity for the matcher to guess at.
             models.UniqueConstraint(Upper("label"), name="unique_unit_label_global"),
+            # `adjust-rent` rewrites this across an entire building at once. A
+            # negative rent inverts every obligation derived from it.
+            models.CheckConstraint(
+                condition=models.Q(monthly_rent__gte=0),
+                name="unit_monthly_rent_non_negative",
+            ),
         ]
 
     def __str__(self) -> str:
