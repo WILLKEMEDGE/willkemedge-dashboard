@@ -45,13 +45,19 @@ import { avatarFor, propertyImage } from "@/lib/images";
 import { formatKES } from "@/lib/money";
 
 // Chart palette — teal (income/occupied) + semantic status, no rainbow.
-const OCCUPANCY_COLORS = [
-  "rgb(22,163,74)",   // Paid — success
-  "rgb(217,119,6)",   // Partial — warning
-  "rgb(220,38,38)",   // Unpaid — danger
-  "rgb(234,88,12)",   // Arrears — orange (attention)
-  "rgb(203,213,225)", // Vacant — neutral-300
-];
+//
+// Keyed by status rather than held as a positional array: the slices are
+// filtered to the non-zero ones, so an array indexed by position handed
+// Partial's amber to Unpaid the moment no unit was partially paid, and the
+// legend swatches drifted with it.
+const STATUS_COLOR = {
+  paid: "rgb(22,163,74)",       // success
+  partial: "rgb(217,119,6)",    // warning
+  unpaid: "rgb(220,38,38)",     // danger
+  arrears: "rgb(234,88,12)",    // orange — attention
+  vacant: "rgb(203,213,225)",   // neutral-300
+  renovation: "rgb(100,116,139)", // slate-500 — held off the market
+} as const;
 const TEAL = "rgb(13,148,136)";
 const AXIS_TICK = { fill: "rgb(100,116,139)", fontSize: 12 };
 const TOOLTIP_STYLE = {
@@ -65,6 +71,14 @@ const TOOLTIP_STYLE = {
 
 function KES(n: number) {
   return formatKES(n);
+}
+
+/** "2026-08" → "Aug". Falls back to the raw key if it is not a period. */
+function monthName(key: string) {
+  const parts = /^(\d{4})-(\d{2})$/.exec(key);
+  return parts
+    ? format(new Date(Number(parts[1]), Number(parts[2]) - 1, 1), "MMM")
+    : key;
 }
 
 function formatK(n: number) {
@@ -117,25 +131,46 @@ export default function DashboardPage() {
     ? Math.round((kpis.occupied / kpis.total_units) * 100)
     : 0;
 
+  // Every unit lands in exactly one slice. "Under renovation" was missing, so
+  // on any day a unit was held off the market the legend quietly stopped
+  // adding up to the "Total units" tile sitting beside it.
+  const renovation = occupancy.under_maintenance ?? 0;
   const occData = [
-    { name: "Paid",    value: occupancy.paid },
-    { name: "Partial", value: occupancy.partial },
-    { name: "Unpaid",  value: occupancy.unpaid },
-    { name: "Arrears", value: occupancy.arrears },
-    { name: "Vacant",  value: occupancy.vacant },
+    { name: "Paid",             value: occupancy.paid,    color: STATUS_COLOR.paid },
+    { name: "Partial",          value: occupancy.partial, color: STATUS_COLOR.partial },
+    { name: "Unpaid",           value: occupancy.unpaid,  color: STATUS_COLOR.unpaid },
+    { name: "Arrears",          value: occupancy.arrears, color: STATUS_COLOR.arrears },
+    { name: "Vacant",           value: occupancy.vacant,  color: STATUS_COLOR.vacant },
+    { name: "Under renovation", value: renovation,        color: STATUS_COLOR.renovation },
   ].filter((d) => d.value > 0);
 
-  const thisMonth = kpis.collection_received;
-  const lastMonth = kpis.last_month_received ?? 0;
-  const trendDelta =
-    lastMonth > 0 ? ((thisMonth - lastMonth) / lastMonth) * 100 : 0;
-  const trendSign = trendDelta >= 0 ? "+" : "";
-
-  const collectionPct = kpis.collection_expected > 0
-    ? Math.round((kpis.collection_received / kpis.collection_expected) * 100)
-    : kpis.collection_percentage ?? 0;
-
   const monthLabel = format(today, "MMMM");
+  const currentKey = format(today, "yyyy-MM");
+
+  // The badge sits on the income chart, so it is measured from the income
+  // series. It used to divide this month's rent collection by last month's —
+  // rent only, VAT-inclusive — and print the answer over a line drawing net
+  // income (VAT stripped, deposits excluded, other income included): two
+  // different numbers under one label.
+  //
+  // It also compares the last two COMPLETE months. The current period is still
+  // being collected, so measuring a month that is one day old against a
+  // finished one read "-88.6% vs last month" every time the 1st came round.
+  const completeMonths = income_trend.filter((p) => p.month !== currentKey);
+  const latestMonth = completeMonths[completeMonths.length - 1];
+  const priorMonth = completeMonths[completeMonths.length - 2];
+  const trendDelta =
+    latestMonth && priorMonth && priorMonth.amount > 0
+      ? ((latestMonth.amount - priorMonth.amount) / priorMonth.amount) * 100
+      : null;
+  const trendLabel =
+    latestMonth && priorMonth
+      ? `${monthName(latestMonth.month)} vs ${monthName(priorMonth.month)}`
+      : "";
+
+  // One source for the collection rate. Recomputing received/expected here and
+  // rounding to whole percent printed 9% next to an API that said 9.1%.
+  const collectionPct = kpis.collection_percentage ?? 0;
 
   return (
     <div className="space-y-10 lg:space-y-12">
@@ -183,7 +218,11 @@ export default function DashboardPage() {
           tone="navy"
           label="Total units"
           value={kpis.total_units.toLocaleString()}
-          caption={`${kpis.occupied} occupied · ${kpis.vacant} vacant`}
+          caption={[
+            `${kpis.occupied} occupied`,
+            `${kpis.vacant} vacant`,
+            ...(renovation > 0 ? [`${renovation} under renovation`] : []),
+          ].join(" · ")}
           to="/units"
         />
         <Kpi
@@ -202,19 +241,24 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between px-6 pt-4">
             <div>
               <h2 className="text-lg font-semibold text-content">Income</h2>
-              <p className="mt-0.5 text-sm text-content-muted">Last 6 months</p>
+              {/* The API returns twelve buckets; the card claimed six. The
+                  final one is the month in progress, which is why it sits low
+                  — said here rather than left to look like a collapse. */}
+              <p className="mt-0.5 text-sm text-content-muted">
+                Last 12 months · {monthLabel} still collecting
+              </p>
             </div>
-            {lastMonth > 0 ? (
+            {trendDelta === null ? (
+              <Badge tone="neutral">Not enough history</Badge>
+            ) : (
               <Badge tone={trendDelta >= 0 ? "sage" : "coral"}>
                 {trendDelta >= 0 ? (
                   <TrendingUp className="h-3.5 w-3.5" />
                 ) : (
                   <TrendingDown className="h-3.5 w-3.5" />
                 )}
-                {trendSign}{trendDelta.toFixed(1)}% vs last month
+                {trendDelta >= 0 ? "+" : ""}{trendDelta.toFixed(1)}% · {trendLabel}
               </Badge>
-            ) : (
-              <Badge tone="neutral">First month on record</Badge>
             )}
           </div>
           <div className="h-[150px] px-3 pb-3 pt-3">
@@ -264,8 +308,8 @@ export default function DashboardPage() {
                     paddingAngle={2}
                     stroke="none"
                   >
-                    {occData.map((_, i) => (
-                      <Cell key={i} fill={OCCUPANCY_COLORS[i % OCCUPANCY_COLORS.length]} />
+                    {occData.map((d) => (
+                      <Cell key={d.name} fill={d.color} />
                     ))}
                   </Pie>
                   <RcTooltip contentStyle={TOOLTIP_STYLE} />
@@ -282,11 +326,11 @@ export default function DashboardPage() {
               </div>
             </div>
             <ul className="mt-4 space-y-2 text-sm">
-              {occData.map((d, i) => (
+              {occData.map((d) => (
                 <li key={d.name} className="flex items-center gap-3">
                   <span
                     className="h-2.5 w-2.5 rounded-full"
-                    style={{ background: OCCUPANCY_COLORS[i % OCCUPANCY_COLORS.length] }}
+                    style={{ background: d.color }}
                   />
                   <span className="text-content-secondary">{d.name}</span>
                   <span className="ml-auto font-semibold tabular-nums text-content">{d.value}</span>

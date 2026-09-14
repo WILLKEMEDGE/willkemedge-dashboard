@@ -9,17 +9,20 @@ import type { Page } from "@playwright/test";
 
 const USER = { id: 1, email: "owner@wilkem.test", username: "owner", first_name: "Wilson", last_name: "Osoro" };
 
+// Shaped like the real /dashboard/summary/ response: the occupancy slices
+// partition the 67 units exactly once, and income_trend is keyed "YYYY-MM"
+// as the API returns it — not "Feb", which no endpoint ever sent.
 const DASHBOARD = {
   kpis: {
-    total_units: 67, occupied: 60, vacant: 7,
+    total_units: 67, occupied: 60, vacant: 7, under_maintenance: 0,
     total_arrears: 452350, collection_received: 320000, collection_expected: 691100,
-    collection_percentage: 46, last_month_received: 300000,
+    collection_percentage: 46.3, last_month_received: 300000,
   },
   income_trend: [
-    { month: "Feb", amount: 280000 }, { month: "Mar", amount: 300000 },
-    { month: "Apr", amount: 320000 },
+    { month: "2026-02", amount: 280000 }, { month: "2026-03", amount: 300000 },
+    { month: "2026-04", amount: 320000 },
   ],
-  occupancy: { paid: 40, partial: 8, unpaid: 12, arrears: 5, vacant: 7 },
+  occupancy: { paid: 40, partial: 8, unpaid: 12, arrears: 5, vacant: 7, under_maintenance: 0 },
   buildings: [{ id: 1, name: "Wilkem Edge Apartments - Donholm", total: 8, occupied: 8, vacant: 0 }],
   recent_payments: [],
   alerts: [],

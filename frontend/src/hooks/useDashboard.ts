@@ -6,6 +6,8 @@ export interface DashboardKPIs {
   total_units: number;
   occupied: number;
   vacant: number;
+  /** Held off the market — neither occupied nor available to let. */
+  under_maintenance: number;
   active_tenants: number;
   total_arrears: number;
   collection_expected: number;
@@ -19,12 +21,14 @@ export interface IncomeTrendPoint {
   amount: number;
 }
 
+/** Slices that partition every unit exactly once — they sum to `total_units`. */
 export interface OccupancyBreakdown {
   vacant: number;
   paid: number;
   partial: number;
   unpaid: number;
   arrears: number;
+  under_maintenance: number;
 }
 
 export interface BuildingBreakdown {

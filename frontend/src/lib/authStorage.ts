@@ -49,6 +49,15 @@ export const authStorage = {
   setAccess(access: string) {
     localStorage.setItem(ACCESS_KEY, access);
   },
+  /** Replace both tokens — used after a password change rotates the pair. */
+  setTokens(access: string, refresh: string) {
+    localStorage.setItem(ACCESS_KEY, access);
+    localStorage.setItem(REFRESH_KEY, refresh);
+  },
+  /** Update the cached user without touching the tokens (profile edit). */
+  setUser(user: StoredUser) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  },
   clear() {
     localStorage.removeItem(ACCESS_KEY);
     localStorage.removeItem(REFRESH_KEY);

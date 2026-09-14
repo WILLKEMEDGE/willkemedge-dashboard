@@ -203,13 +203,3 @@ export function useTenantStatement(tenantId: number | string | null) {
     enabled: !!tenantId,
   });
 }
-
-export function useLandlordStatement(month: number, year: number) {
-  return useQuery({
-    queryKey: ["reports", "landlord-statement", month, year],
-    queryFn: async () => {
-      const { data } = await api.get("/reports/landlord-statement/", { params: { month, year } });
-      return data;
-    },
-  });
-}

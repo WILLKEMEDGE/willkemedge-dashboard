@@ -6,8 +6,20 @@ import { useViewPreferences } from "@/hooks/useViewPreferences";
 import { cn } from "@/lib/cn";
 import { NAV_ITEMS, type ViewKey } from "@/lib/nav";
 
-const PRIMARY_KEYS: ViewKey[] = ["dashboard", "units", "tenants", "payments"];
-const OVERFLOW_KEYS: ViewKey[] = ["buildings", "expenses", "notifications", "reports", "settings"];
+export const PRIMARY_KEYS: ViewKey[] = ["dashboard", "units", "tenants", "payments"];
+
+// Everything that is not in PRIMARY_KEYS belongs here, or the page is
+// unreachable on a phone. Reconciliation, Income, Water and Accounting were all
+// missing: four working pages with no route to them on mobile, including the
+// reconciliation queue — the one screen whose whole job is to be cleared
+// promptly when a bank credit cannot be matched.
+//
+// Derived from NAV_ITEMS rather than hand-listed, so a new nav entry cannot be
+// silently dropped again. MobileNav.test.tsx asserts the two lists together
+// cover NAV_ITEMS.
+export const OVERFLOW_KEYS: ViewKey[] = NAV_ITEMS
+  .map((item) => item.key)
+  .filter((key) => !PRIMARY_KEYS.includes(key));
 
 const byKey = (key: ViewKey) => NAV_ITEMS.find((i) => i.key === key)!;
 

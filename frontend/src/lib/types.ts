@@ -223,11 +223,9 @@ export interface ReceiptData {
 
 // --- Auth ---
 
-export interface StoredUser {
-  id: number;
-  username: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  [key: string]: unknown;
-}
+// One definition, in lib/authStorage. There used to be a second one here with
+// an `[key: string]: unknown` index signature, which quietly typed every real
+// field (`role`, `role_display`, `can_forgive_money`) as `unknown` for whoever
+// imported this copy — SettingsPage did, which is why it rendered a hardcoded
+// "Administrator" instead of the user's actual role.
+export type { StoredUser } from "./authStorage";

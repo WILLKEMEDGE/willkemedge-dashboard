@@ -9,9 +9,19 @@
  * per-page is how one page quietly drifts from the rest.
  */
 
+/**
+ * Whole shillings. `toLocaleString()` with no options keeps up to three
+ * decimal places, which is how the dashboard came to print "KES 1,275,919.8"
+ * expected: commercial rent is grossed up by 16% VAT server-side, so a
+ * portfolio total lands on a fraction of a shilling. Cents are not something
+ * this business quotes — rent, arrears and collection are all whole figures —
+ * so they are rounded away here rather than in each caller.
+ */
+const WHOLE_SHILLINGS: Intl.NumberFormatOptions = { maximumFractionDigits: 0 };
+
 /** "KES 20,000" — a plain money amount with a currency prefix. */
 export function formatKES(value: string | number | null | undefined): string {
-  return `KES ${Number(value || 0).toLocaleString()}`;
+  return `KES ${Number(value || 0).toLocaleString(undefined, WHOLE_SHILLINGS)}`;
 }
 
 /**
@@ -21,9 +31,9 @@ export function formatKES(value: string | number | null | undefined): string {
 export function formatBalance(value: string | number | null | undefined): string {
   const amount = Number(value || 0);
   if (amount < 0) {
-    return `${Math.abs(amount).toLocaleString()} cr`;
+    return `${Math.abs(amount).toLocaleString(undefined, WHOLE_SHILLINGS)} cr`;
   }
-  return amount.toLocaleString();
+  return amount.toLocaleString(undefined, WHOLE_SHILLINGS);
 }
 
 /** Same as `formatBalance` but with the "KES" prefix, for summary/KPI cards. */

@@ -24,10 +24,12 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useViewPreferences } from "@/hooks/useViewPreferences";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/apiError";
+import { authStorage } from "@/lib/authStorage";
 import { displayName } from "@/lib/displayName";
 import { avatarFor } from "@/lib/images";
 import { NAV_ITEMS } from "@/lib/nav";
-import type { StoredUser } from "@/lib/types";
+import type { StoredUser } from "@/lib/authStorage";
 
 interface LoginAttempt {
   email: string;
@@ -60,11 +62,13 @@ export default function SettingsPage() {
   const hiddenCount = togglableItems.filter((i) => !prefs[i.key]).length;
 
   const [editing, setEditing] = useState(false);
+  // `phone` is deliberately absent: the User model has no phone field, so the
+  // box collected a value the API would reject. Tenant phone numbers live on
+  // the Tenant record, not on a staff login.
   const [profileForm, setProfileForm] = useState({
     first_name: user?.first_name ?? "",
     last_name: user?.last_name ?? "",
     email: user?.email ?? "",
-    phone: (user?.phone as string | undefined) ?? "",
   });
   const [pwForm, setPwForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [pwEditing, setPwEditing] = useState(false);
@@ -73,14 +77,17 @@ export default function SettingsPage() {
   const saveProfile = useMutation({
     mutationFn: async (data: typeof profileForm) => {
       const res = await api.patch("/auth/me/", data);
-      return res.data;
+      return res.data as StoredUser;
     },
-    onSuccess: () => {
+    onSuccess: (updated) => {
       toast.success("Profile updated");
+      // The header, sidebar and this page all read the cached user, so the
+      // stored copy has to move with the server's.
+      authStorage.setUser(updated);
       qc.invalidateQueries({ queryKey: ["me"] });
       setEditing(false);
     },
-    onError: () => toast.error("Failed to update profile"),
+    onError: (err) => toast.error(getErrorMessage(err, "Failed to update profile")),
   });
 
   const handlePwSave = async () => {
@@ -88,22 +95,32 @@ export default function SettingsPage() {
       toast.error("Passwords do not match");
       return;
     }
-    if (pwForm.new_password.length < 8) {
-      toast.error("Password must be at least 8 characters");
+    // 12, not 8 — this has to match the server's MinimumLengthValidator, or the
+    // form accepts a password the API then rejects with a field error the user
+    // never sees.
+    if (pwForm.new_password.length < 12) {
+      toast.error("Password must be at least 12 characters");
       return;
     }
     setPwSaving(true);
     try {
-      await api.post("/auth/change-password/", {
-        current_password: pwForm.current_password,
-        new_password: pwForm.new_password,
-      });
-      toast.success("Password changed successfully");
+      const { data } = await api.post<{ access: string; refresh: string }>(
+        "/auth/change-password/",
+        {
+          current_password: pwForm.current_password,
+          new_password: pwForm.new_password,
+        },
+      );
+      // Changing the password blacklists every outstanding refresh token — any
+      // session opened with the OLD password is now dead, which is the point.
+      // The server hands back a fresh pair for THIS session so the person who
+      // made the change is not signed out by their own action.
+      authStorage.setTokens(data.access, data.refresh);
+      toast.success("Password changed. Other sessions have been signed out.");
       setPwEditing(false);
       setPwForm({ current_password: "", new_password: "", confirm_password: "" });
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed to change password";
-      toast.error(msg);
+      toast.error(getErrorMessage(err, "Failed to change password"));
     } finally {
       setPwSaving(false);
     }
@@ -135,7 +152,7 @@ export default function SettingsPage() {
             <span className="absolute bottom-0 right-0 h-5 w-5 rounded-full border-2 border-canvas bg-status-paid" />
           </div>
           <div className="min-w-0 flex-1">
-            <Badge tone="sage" withDot>Admin</Badge>
+            <Badge tone="sage" withDot>{user?.role_display ?? "User"}</Badge>
             <p className="mt-2 font-display text-2xl font-semibold text-ink-900">
               {displayUserName}
             </p>
@@ -189,15 +206,6 @@ export default function SettingsPage() {
                   placeholder="Email"
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">Phone number</label>
-                <input
-                  className={inputCls}
-                  value={profileForm.phone}
-                  onChange={(e) => setProfileForm((f) => ({ ...f, phone: e.target.value }))}
-                  placeholder="+254…"
-                />
-              </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -243,7 +251,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center justify-between gap-3 rounded-md bg-white/40 p-3 dark:bg-white/5">
               <dt className="text-ink-500">Role</dt>
-              <dd><Badge tone="sage">Administrator</Badge></dd>
+              <dd><Badge tone="sage">{user?.role_display ?? "—"}</Badge></dd>
             </div>
           </dl>
         </Card>

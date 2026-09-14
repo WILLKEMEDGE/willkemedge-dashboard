@@ -19,7 +19,6 @@ import {
   useArrearsReport,
   useExpiringLeases,
   useExpenseBreakdown,
-  useLandlordStatement,
   useMonthlyCollection,
   useMoveLog,
   useOccupancyReport,
@@ -34,6 +33,7 @@ import {
   useVacantUnits,
 } from "@/hooks/useReports";
 import { cn } from "@/lib/cn";
+import { escapeHtml, toCsv } from "@/lib/exportSafety";
 
 const TABS = [
   { key: "monthly",        label: "Monthly" },
@@ -46,7 +46,6 @@ const TABS = [
   { key: "tenant",         label: "Tenant History" },
   { key: "tenant_stmt",    label: "Tenant Statement" },
   { key: "unit_stmt",      label: "Unit Statement" },
-  { key: "landlord",       label: "Landlord Statement" },
   { key: "occupancy",      label: "Occupancy" },
   { key: "vacant",         label: "Vacant Units" },
   { key: "moves",          label: "Move Log" },
@@ -75,8 +74,12 @@ const selectCls = "glass rounded-md px-3 py-2 text-sm text-ink-900 focus:outline
 
 // ─── Export helpers ──────────────────────────────────────────────────────────
 function exportCSV(filename: string, headers: string[], rows: (string | number)[][]) {
-  const lines = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  // Cells are neutralised against spreadsheet formula execution and quoted
+  // properly — see lib/exportSafety. A BOM is prepended so Excel opens the
+  // UTF-8 correctly instead of mangling tenant names with accents.
+  const blob = new Blob(["﻿", toCsv(headers, rows)], {
+    type: "text/csv;charset=utf-8",
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = filename; a.click();
@@ -84,14 +87,18 @@ function exportCSV(filename: string, headers: string[], rows: (string | number)[
 }
 
 function exportPDF(title: string, headers: string[], rows: (string | number)[][]) {
-  const html = `<html><head><title>${title}</title>
+  // Every interpolated value is escaped. This document is created with
+  // window.open("") + document.write, which INHERITS THIS ORIGIN — an unescaped
+  // tenant name containing <img src=x onerror=...> would run as the app, with
+  // access to the token in localStorage.
+  const html = `<html><head><title>${escapeHtml(title)}</title>
   <style>body{font-family:-apple-system,sans-serif;font-size:12px;margin:24px;color:#181821}
   h1{font-size:18px;margin-bottom:6px}.sub{color:#636776;font-size:11px;margin-bottom:20px;text-transform:uppercase;letter-spacing:.14em}
   table{width:100%;border-collapse:collapse}th{background:#F0EDE5;text-align:left;padding:10px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#636776}
   td{padding:10px 12px;border-bottom:1px solid #E1E1E6}</style></head><body>
-  <div class="sub">Wilkem Ventures Property Suite</div><h1>${title}</h1>
-  <table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
-  <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>
+  <div class="sub">Wilkem Ventures Property Suite</div><h1>${escapeHtml(title)}</h1>
+  <table><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+  <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("")}</tbody>
   </table></body></html>`;
   const win = window.open("", "_blank");
   if (!win) return;
@@ -224,7 +231,6 @@ export default function ReportsPage() {
         {tab === "tenant"        && <TenantTab />}
         {tab === "tenant_stmt"   && <TenantStatementTab />}
         {tab === "unit_stmt"     && <UnitStatementTab />}
-        {tab === "landlord"      && <LandlordTab />}
         {tab === "occupancy"     && <OccupancyTab />}
         {tab === "vacant"        && <VacantUnitsTab />}
         {tab === "moves"         && <MoveLogTab />}
@@ -449,41 +455,6 @@ function UnitStatementTab() {
         <ErrorState title="This statement could not be loaded." onRetry={() => void refetch()} />
       )}
       {data && <ReportTable headers={headers} rows={rows} />}
-    </Card>
-  );
-}
-
-function LandlordTab() {
-  const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const { data, isLoading, isError, refetch } = useLandlordStatement(month, year);
-  const headers = ["Description", "Amount (KES)"];
-  const rows = data?.rows?.map((r: Record<string,unknown>) => [r.description, `KES ${Number(r.amount).toLocaleString()}`]) ?? [];
-  return (
-    <Card variant="glass" padding="md">
-      <CardHeader>
-        <div>
-          <CardTitle>Landlord Statement</CardTitle>
-          <p className="mt-1 text-xs text-ink-500">Monthly summary for Dr. Wilson Osoro</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <MonthYearPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />
-          {data && <ExportBar title={`Landlord Statement ${month}/${year}`} headers={headers} rows={rows} filename={`landlord-${month}-${year}.csv`} />}
-        </div>
-      </CardHeader>
-      {isLoading ? <Skeleton className="h-48" /> : isError ? (
-        <ErrorState title="This statement could not be loaded." onRetry={() => void refetch()} />
-      ) : !data ? null : (
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <SummaryCard label="Total Income" value={`KES ${Number(data.total_income || 0).toLocaleString()}`} tone="sage" />
-            <SummaryCard label="Total Expenses" value={`KES ${Number(data.total_expenses || 0).toLocaleString()}`} tone="coral" />
-            <SummaryCard label="Net to Landlord" value={`KES ${Number(data.net || 0).toLocaleString()}`} tone="ochre" />
-          </div>
-          <ReportTable headers={headers} rows={rows} />
-        </div>
-      )}
     </Card>
   );
 }

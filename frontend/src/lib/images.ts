@@ -1,6 +1,5 @@
 /**
- * Deterministic property imagery from Unsplash source.
- * Given a seed (building name/id), returns the same image every time.
+ * Deterministic imagery. Given a seed, the same picture every time.
  */
 const PROPERTY_IMAGES = [
   "photo-1570129477492-45c003edd2be", // modern apartment
@@ -25,15 +24,57 @@ function hash(str: string): number {
   return Math.abs(h);
 }
 
+/**
+ * Decorative stock photography for a property card, keyed off the building name.
+ *
+ * These are Unsplash stock images, not photographs of the actual properties —
+ * the seed only decides which one. No identifying data is sent: the building
+ * name never leaves the browser, it is hashed to an index locally and only the
+ * fixed photo id appears in the URL.
+ */
 export function propertyImage(seed: string | number, size: "sm" | "md" | "lg" = "md") {
   const w = size === "sm" ? 400 : size === "md" ? 800 : 1400;
   const id = PROPERTY_IMAGES[hash(String(seed)) % PROPERTY_IMAGES.length];
   return `https://images.unsplash.com/${id}?auto=format&fit=crop&q=80&w=${w}`;
 }
 
+/** On-brand backgrounds, picked deterministically from the seed. */
+const AVATAR_COLORS = ["#0F2A43", "#12324D", "#1E4668", "#0D9488"];
+
+/**
+ * An initials avatar, rendered locally as an inline SVG data URI.
+ *
+ * This used to build a `https://api.dicebear.com/...?seed=<value>` URL, and the
+ * seed passed in at every call site is a REAL TENANT'S FULL NAME (Payments,
+ * Tenants) or a STAFF EMAIL ADDRESS (Settings, the top bar). Every avatar
+ * render therefore put personal data in the URL of a third-party CDN, where it
+ * is logged — for a Kenyan property business subject to the Data Protection Act
+ * 2019, and in a backend that is otherwise careful enough to mask phone numbers
+ * and keep SMS bodies out of the logs.
+ *
+ * Two letters do not need a network request. The signature is unchanged, so
+ * every `<img src={avatarFor(...)} />` call site keeps working.
+ */
 export function avatarFor(seed: string | number) {
-  // Solid navy / teal backgrounds — on-brand. Dicebear picks one per seed.
-  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-    String(seed)
-  )}&backgroundType=solid&backgroundColor=0F2A43,12324D,1E4668,0D9488&fontSize=42`;
+  const text = String(seed).trim();
+  const initials =
+    text
+      .split(/[\s._@-]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?";
+  const background = AVATAR_COLORS[hash(text) % AVATAR_COLORS.length];
+
+  // Rendered at a fixed 100×100 and scaled by the caller's CSS.
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">` +
+    `<rect width="100" height="100" fill="${background}"/>` +
+    `<text x="50" y="50" dy="0.36em" fill="#ffffff" font-size="42" ` +
+    `font-family="Inter, system-ui, -apple-system, sans-serif" font-weight="600" ` +
+    `text-anchor="middle">${initials}</text></svg>`;
+
+  // encodeURIComponent, not btoa: the seed can contain non-Latin-1 characters
+  // (a tenant name with an accent), which btoa throws on.
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
