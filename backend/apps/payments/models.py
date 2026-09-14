@@ -126,6 +126,23 @@ class Payment(models.Model):
                 condition=~models.Q(idempotency_key=""),
                 name="unique_payment_idempotency_key_per_tenant",
             ),
+            # Every write path already routes through `split_tax_inclusive`,
+            # which rejects a non-positive amount, and migration 0017 removed
+            # the legacy negative "VOID:" rows. This makes the guarantee
+            # structural rather than a property of whichever function happened
+            # to run first: a management command, an admin save or a psql
+            # session cannot book a zero or negative receipt.
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="payment_amount_positive",
+            ),
+            # A payment filed to month 13 disappears from every period-keyed
+            # report and reconciles against nothing. Arrears has had this check
+            # since 0018; Payment did not.
+            models.CheckConstraint(
+                condition=models.Q(period_month__gte=1) & models.Q(period_month__lte=12),
+                name="payment_period_month_valid",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -266,6 +283,25 @@ class UtilityCharge(models.Model):
         ordering = ["-posting_date", "-id"]
         indexes = [
             models.Index(fields=["tenant", "period_year", "period_month"]),
+        ]
+        constraints = [
+            # Both writers — the staff meter form (`meter_service`) and the
+            # spreadsheet importer — use update_or_create on exactly these four
+            # fields, so one charge per meter per month is already the intent.
+            # Without the constraint two concurrent submissions both read
+            # nothing, both insert, and the tenant is billed twice for the same
+            # water, with two journal entries to match.
+            models.UniqueConstraint(
+                fields=["tenant", "period_year", "period_month", "label"],
+                name="unique_utility_charge_per_period",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(period_month__gte=1) & models.Q(period_month__lte=12),
+                name="utility_charge_period_month_valid",
+            ),
+            # NB: deliberately no amount constraint. A negative UtilityCharge is
+            # a credit note, and `ledger.posting.post_utility_charge` has an
+            # explicit branch that books one.
         ]
 
     def __str__(self) -> str:

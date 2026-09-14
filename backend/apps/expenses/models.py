@@ -127,6 +127,17 @@ class Expense(models.Model):
             models.Index(fields=["category"]),
             models.Index(fields=["building"]),
         ]
+        constraints = [
+            # Serializer-only until now, so a management command or an admin
+            # save could book a zero/negative cost straight into the ledger.
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0), name="expense_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(period_month__gte=1) & models.Q(period_month__lte=12),
+                name="expense_period_month_valid",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.category.name} — KES {self.amount} ({self.period_month}/{self.period_year})"
@@ -171,6 +182,15 @@ class ManualIncome(models.Model):
         indexes = [
             models.Index(fields=["period_year", "period_month"]),
             models.Index(fields=["building"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0), name="manual_income_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(period_month__gte=1) & models.Q(period_month__lte=12),
+                name="manual_income_period_month_valid",
+            ),
         ]
 
     def __str__(self) -> str:

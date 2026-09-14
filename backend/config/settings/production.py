@@ -7,6 +7,19 @@ from .base import *  # noqa: F401,F403
 DEBUG = False
 
 SECRET_KEY = config("DJANGO_SECRET_KEY")
+# The key signs every JWT. `config()` with no default already stops a MISSING
+# key, but not a short or copy-pasted-placeholder one — and a weak HMAC key is
+# forgeable access tokens, which is the whole authentication system. 50 is
+# Django's own `get_random_secret_key()` length; refusing anything shorter costs
+# nothing and closes the gap between "set" and "strong".
+if len(SECRET_KEY) < 50 or SECRET_KEY.startswith("insecure-"):
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY must be at least 50 random characters in production "
+        "and must not be the development placeholder. Generate one with:\n"
+        "  python -c \"from django.core.management.utils import "
+        'get_random_secret_key as k; print(k())"'
+    )
+
 ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", cast=Csv())
 
 DATABASE_URL = config("DATABASE_URL", default="")

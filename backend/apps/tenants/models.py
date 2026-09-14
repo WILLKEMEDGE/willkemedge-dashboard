@@ -117,6 +117,29 @@ class Tenant(models.Model):
         db_table = "tenants_tenant"
         # Active tenants first, then by move-in date descending
         ordering = ["-status", "-move_in_date"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(monthly_rent__gte=0),
+                name="tenant_monthly_rent_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(deposit_paid__gte=0),
+                name="tenant_deposit_paid_non_negative",
+            ),
+            # `send_rent_reminders` builds date(year, month, due_day). A zero
+            # raises ValueError and takes the whole daily run down for every
+            # tenant, not just this one. Field validators do not run on save().
+            models.CheckConstraint(
+                condition=models.Q(due_day__gte=1) & models.Q(due_day__lte=31),
+                name="tenant_due_day_valid",
+            ),
+            # The move-out view multiplies deposit_paid by this.
+            models.CheckConstraint(
+                condition=models.Q(deposit_refund_percentage__gte=0)
+                & models.Q(deposit_refund_percentage__lte=100),
+                name="tenant_deposit_refund_percentage_valid",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.first_name} {self.last_name} ({self.unit})"

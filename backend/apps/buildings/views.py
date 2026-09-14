@@ -1,11 +1,13 @@
 """Building, Unit and MaintenanceRequest API views."""
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts.permissions import CanManageMaintenance, CanManageProperty
 from apps.expenses.models import Expense, ExpenseCategory
 
 from .models import (
@@ -25,7 +27,9 @@ from .serializers import (
 
 
 class BuildingViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    # Owner-only writes: a unit's label routes inbound M-Pesa payments and its
+    # rent is every tenant's obligation. Reads stay open to all staff.
+    permission_classes = [CanManageProperty]
 
     def get_queryset(self):
         return Building.objects.annotate(
@@ -67,26 +71,75 @@ class BuildingViewSet(viewsets.ModelViewSet):
         """
         POST /api/buildings/{id}/adjust-rent/
         Input: {"amount": 1000, "type": "fixed"|"percent"}
+
+        Adjusts the ADVERTISED rent on every unit in the building. It does NOT
+        change what any sitting tenant is billed — that is `Tenant.monthly_rent`,
+        which is what `generate_monthly_arrears` reads — because re-pricing a
+        live tenancy is a per-tenant decision with a notice period behind it.
+        The response says so explicitly rather than leaving the caller to assume
+        the rent roll moved.
+
+        Arithmetic is Decimal end-to-end. It was `float()` with `round(x, 0)`,
+        the only money path in the codebase that left Decimal, and it ran across
+        every unit in a building at once — the worst possible place for binary
+        drift. A negative result is refused outright: rent below zero would
+        invert every obligation derived from it.
         """
         building = self.get_object()
-        adj_amount = request.data.get("amount")
+        raw_amount = request.data.get("amount")
         adj_type = request.data.get("type", "fixed")
 
-        if not adj_amount:
+        if raw_amount in (None, ""):
             return Response({"detail": "Amount is required."}, status=400)
+        if adj_type not in ("fixed", "percent"):
+            return Response(
+                {"detail": "type must be 'fixed' or 'percent'."}, status=400
+            )
+        try:
+            adj_amount = Decimal(str(raw_amount))
+        except (InvalidOperation, TypeError):
+            return Response({"detail": "Amount must be a number."}, status=400)
+        if adj_type == "percent" and adj_amount <= Decimal("-100"):
+            return Response(
+                {"detail": "A reduction of 100% or more would zero every rent."},
+                status=400,
+            )
 
+        units = list(building.units.all())
+        updates = []
+        for unit in units:
+            current = Decimal(str(unit.monthly_rent))
+            if adj_type == "percent":
+                new_rent = current * (Decimal("1") + adj_amount / Decimal("100"))
+            else:
+                new_rent = current + adj_amount
+            new_rent = new_rent.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            if new_rent < 0:
+                return Response(
+                    {
+                        "detail": (
+                            f"That adjustment would take {unit.label} to a negative "
+                            f"rent ({new_rent}). No unit was changed."
+                        )
+                    },
+                    status=400,
+                )
+            updates.append((unit, new_rent))
+
+        # All-or-nothing: a partially adjusted building is worse than none.
         with transaction.atomic():
-            units = building.units.all()
-            for unit in units:
-                old_rent = float(unit.monthly_rent)
-                if adj_type == "percent":
-                    new_rent = old_rent * (1 + float(adj_amount) / 100)
-                else:
-                    new_rent = old_rent + float(adj_amount)
-                unit.monthly_rent = round(new_rent, 0)
+            for unit, new_rent in updates:
+                unit.monthly_rent = new_rent
                 unit.save(update_fields=["monthly_rent", "updated_at"])
 
-        return Response({"detail": f"Rent adjusted for {units.count()} units in {building.name}."})
+        return Response({
+            "detail": (
+                f"Advertised rent adjusted for {len(updates)} unit(s) in "
+                f"{building.name}. Sitting tenants' billed rent is unchanged."
+            ),
+            "units_updated": len(updates),
+            "tenants_updated": 0,
+        })
 
     @action(detail=True, methods=["get"], url_path="maintenance-summary")
     def maintenance_summary(self, request, pk=None):
@@ -108,7 +161,7 @@ class BuildingViewSet(viewsets.ModelViewSet):
 
 class UnitViewSet(viewsets.ModelViewSet):
     serializer_class = UnitSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanManageProperty]
 
     def get_queryset(self):
         from django.db.models import Prefetch
@@ -171,7 +224,9 @@ class UnitViewSet(viewsets.ModelViewSet):
 class MaintenanceRequestViewSet(viewsets.ModelViewSet):
     """CRUD for maintenance requests. Auto-creates an Expense when cost > 0."""
     serializer_class = MaintenanceRequestSerializer
-    permission_classes = [IsAuthenticated]
+    # Caretakers file and close their own repair work; only the owner may delete
+    # one (which would orphan the auto-created Expense).
+    permission_classes = [CanManageMaintenance]
 
     def get_queryset(self):
         qs = MaintenanceRequest.objects.select_related("unit", "unit__building")

@@ -3,9 +3,9 @@ Notification API — list templates, send to one/many tenants, view history.
 """
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts.permissions import CanSendNotifications
 from apps.tenants.models import Tenant, TenantStatus
 
 from .models import (
@@ -87,7 +87,10 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
       POST /api/notifications/send/       → compose + dispatch
     """
 
-    permission_classes = [IsAuthenticated]
+    # Reading the history is open; sending is not. A broadcast reaches every
+    # active tenant, costs money per message, and the sender ID is registered
+    # TRANSACTIONAL only.
+    permission_classes = [CanSendNotifications]
     serializer_class = TenantNotificationSerializer
 
     def get_queryset(self):

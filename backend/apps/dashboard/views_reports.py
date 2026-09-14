@@ -807,7 +807,14 @@ class ExpenseBreakdownReportView(APIView):
         for r in rows:
             r["percentage"] = round(r["total"] / grand_total * 100, 1) if grand_total else 0.0
 
-        income = payments_qs.filter(INCOME_PAYMENT_FILTER).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        # Net of VAT, on exactly the basis the P&L, the annual summary and the
+        # dashboard trend use. This was `Sum("amount")` — the gross — so for any
+        # month with commercial rent in it the expense ratio on this page was
+        # measured against an income figure 16% larger than the one the P&L
+        # reported for the same month. Two reports, two answers, same books.
+        income = payments_qs.filter(INCOME_PAYMENT_FILTER).aggregate(
+            total=_net_income_sum()
+        )["total"] or Decimal("0")
         return Response({
             "period": f"{month}/{year}",
             "building": int(building_id) if building_id else None,

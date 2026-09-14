@@ -6,7 +6,9 @@ Covers the owner's daily KPI screen, which previously had no tests:
 - units under maintenance are not "occupied" (F10)
 - commercial expected rent is grossed up so collection % can't exceed 100 (F11)
 """
+import datetime as dt
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -65,10 +67,15 @@ class DashboardSummaryTests(APITestCase):
             status=TenantStatus.ACTIVE,
         )
 
-        now = timezone.now()
-        cls.month, cls.year = now.month, now.year
+        # The project timezone, not `timezone.now()`: the view reads the
+        # current period off `localdate()`, and Nairobi is three hours ahead of
+        # UTC, so between midnight and 03:00 EAT a payment booked against the
+        # UTC month lands in the previous period and the trend/collection
+        # assertions below go red.
+        today = timezone.localdate()
+        cls.month, cls.year = today.month, today.year
         common = dict(
-            payment_date=now.date(), period_month=cls.month, period_year=cls.year,
+            payment_date=today, period_month=cls.month, period_year=cls.year,
             source=PaymentSource.MPESA,
         )
         # Rent: residential 10,000 + commercial 23,200 (gross, incl 16% VAT).
@@ -161,3 +168,65 @@ class DashboardSummaryTests(APITestCase):
         # Commercial 23,200 gross -> 20,000 net + residential 10,000 = 30,000.
         # The 15,000 deposit is excluded. (Was 33,200 gross before the fix.)
         assert abs(resp.json()["income"] - 30000) < 0.5
+
+
+class DashboardNairobiClockTests(APITestCase):
+    """The summary reads its period off the Nairobi clock, not off UTC.
+
+    Nairobi is UTC+3, so at 21:04 on 31 August it is already 00:04 on
+    1 September there — the instant CI went red across every branch and the
+    same three-hour window `_update_arrears` and the waive endpoint were fixed
+    for. The dashboard was the remaining reader of `timezone.now().month`.
+
+    Getting this wrong is not a rounding error on the owner's screen: the
+    masthead is drawn from the browser's clock and says September, while
+    "Collected · September" counts August's cash and measures it against a
+    rent roll (built from `localdate()`) that has already rolled forward. The
+    two halves of the same tile describe different months.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="clock", email="clock@test.com", password="testpass123!", role="owner"
+        )
+        cls.building = Building.objects.create(name="Clock Block", total_floors=1)
+        cls.unit = Unit.objects.create(
+            building=cls.building, label="C1", monthly_rent=Decimal("10000"),
+            classification=UnitClassification.RESIDENTIAL, status=UnitStatus.OCCUPIED_PAID,
+        )
+        cls.tenant = Tenant.objects.create(
+            first_name="Clock", last_name="T", id_number="DC1", phone="+254700009001",
+            unit=cls.unit, monthly_rent=Decimal("10000"), move_in_date="2026-01-01",
+            status=TenantStatus.ACTIVE,
+        )
+        common = dict(payment_type=PaymentType.RENT, source=PaymentSource.MPESA)
+        Payment.objects.create(
+            tenant=cls.tenant, amount=Decimal("4000"), reference="AUG",
+            payment_date=dt.date(2026, 8, 20), period_month=8, period_year=2026, **common,
+        )
+        Payment.objects.create(
+            tenant=cls.tenant, amount=Decimal("7000"), reference="SEP",
+            payment_date=dt.date(2026, 9, 1), period_month=9, period_year=2026, **common,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_period_turns_over_at_nairobi_midnight_not_utc(self):
+        # 21:04 UTC on 31 Aug == 00:04 EAT on 1 Sep.
+        nairobi_new_month = dt.datetime(2026, 8, 31, 21, 4, tzinfo=dt.UTC)
+        with mock.patch("django.utils.timezone.now", return_value=nairobi_new_month):
+            data = self._summary()
+
+        kpis = data["kpis"]
+        # September's 7,000, not August's 4,000.
+        assert kpis["collection_received"] == 7000.0
+        assert kpis["last_month_received"] == 4000.0
+        assert data["income_trend"][-1]["month"] == "2026-09"
+
+    def _summary(self):
+        resp = self.client.get("/api/dashboard/summary/")
+        assert resp.status_code == 200
+        return resp.json()

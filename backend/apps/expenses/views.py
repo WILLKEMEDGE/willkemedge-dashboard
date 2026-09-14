@@ -2,6 +2,8 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from apps.accounts.permissions import CanManageBooks
+
 from .models import Account, Expense, ExpenseCategory, ManualIncome
 from .serializers import (
     AccountSerializer,
@@ -47,7 +49,9 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = ExpenseSerializer
-    permission_classes = [IsAuthenticated]
+    # Recording a cost writes to the general ledger; deleting one posts a
+    # reversal that takes it back off, which is owner-only.
+    permission_classes = [CanManageBooks]
 
     def get_queryset(self):
         qs = Expense.objects.select_related("category", "building")
@@ -78,7 +82,7 @@ class ManualIncomeViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = ManualIncomeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanManageBooks]
 
     def get_queryset(self):
         qs = ManualIncome.objects.select_related("building", "account")

@@ -6,8 +6,9 @@ from django.db.models.functions import Coalesce
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from apps.accounts.permissions import CanManageTenants, CanSendNotifications
 
 from .models import Tenant, TenantDocument, TenantStatus
 from .serializers import (
@@ -44,7 +45,10 @@ def render_to_pdf(template_src, context_dict=None):
 
 
 class TenantViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    # Tenancy and KYC are back-office writes; deleting a tenant is owner-only.
+    # Reads (list, detail, statement, payment history, documents) stay open to
+    # every authenticated role — the operators need them to do their jobs.
+    permission_classes = [CanManageTenants]
 
     def get_queryset(self):
         # Active/notice tenants first, then moved-out, then by move-in date.
@@ -158,6 +162,8 @@ class TenantViewSet(viewsets.ModelViewSet):
 
         from django.http import HttpResponse
 
+        from apps.common.csv_safety import csv_safe_row
+
         qs = list(self.get_queryset())
         balances = rent_roll_balances(qs)
         response = HttpResponse(content_type="text/csv")
@@ -168,14 +174,17 @@ class TenantViewSet(viewsets.ModelViewSet):
             balance = balances.get(t.pk, Decimal("0.00"))
             arrears_balance = getattr(t, "outstanding_balance", None) or 0
             payment_status = "In Arrears" if arrears_balance > 0 else "Paid"
-            writer.writerow([
+            # Every text cell here is attacker-influenced (a tenant's name, a
+            # unit label). csv.writer quotes correctly but does not stop a
+            # spreadsheet EXECUTING a cell that starts with '='.
+            writer.writerow(csv_safe_row([
                 t.full_name,
                 t.unit.building.name,
                 t.unit.label,
                 _money(balance),
                 payment_status,
                 t.get_status_display(),
-            ])
+            ]))
         return response
 
     @action(detail=True, methods=["post"], url_path="move-out-notice")
@@ -427,7 +436,10 @@ class TenantViewSet(viewsets.ModelViewSet):
     # not silenced by TENANT_NOTIFICATIONS_ENABLED, and neither passes a
     # dedupe_key — re-sending a statement on request is a normal thing to do.
 
-    @action(detail=True, methods=["post"], url_path="email-statement")
+    @action(
+        detail=True, methods=["post"], url_path="email-statement",
+        permission_classes=[CanSendNotifications],
+    )
     def email_statement(self, request, pk=None):
         """POST /api/tenants/<id>/email-statement/ — email this tenant their statement."""
         from apps.payments.notification_views import TenantNotificationSerializer
@@ -450,7 +462,10 @@ class TenantViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=False, methods=["post"], url_path="email-statements")
+    @action(
+        detail=False, methods=["post"], url_path="email-statements",
+        permission_classes=[CanSendNotifications],
+    )
     def email_statements(self, request):
         """POST /api/tenants/email-statements/ — email a chosen set of tenants.
 

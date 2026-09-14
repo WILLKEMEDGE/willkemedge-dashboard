@@ -31,10 +31,18 @@ class DashboardSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        now = timezone.now()
-        current_month = now.month
-        current_year = now.year
-        today = now.date()
+        # The period is read off the Nairobi clock, not `timezone.now()`.
+        # Nairobi is UTC+3, so between midnight and 03:00 EAT the UTC date
+        # still names the previous day — and on the 1st of the month, the
+        # previous month. The rent roll below already reads `localdate()`, so
+        # mixing the two made this endpoint disagree with itself for three
+        # hours a night: the page said September while "Collected · September"
+        # counted August's cash. Every period figure on the page — collected,
+        # last month, the trend buckets, the due dates in the alerts — is
+        # derived from this one date.
+        today = timezone.localdate()
+        current_month = today.month
+        current_year = today.year
 
         # --- KPI cards ---
         total_units = Unit.objects.count()
@@ -56,7 +64,7 @@ class DashboardSummaryView(APIView):
         active_tenant_ids = list(
             Tenant.objects.filter(status=TenantStatus.ACTIVE).values_list("id", flat=True)
         )
-        rent_roll = current_balances(active_tenant_ids, today=timezone.localdate())
+        rent_roll = current_balances(active_tenant_ids, today=today)
         total_arrears = sum(
             (balance for balance in rent_roll.values() if balance > 0), Decimal("0")
         )
@@ -148,7 +156,11 @@ class DashboardSummaryView(APIView):
             })
 
         # --- Recent payments ---
-        recent = Payment.objects.select_related(
+        # Voided payments are excluded here exactly as they are from every
+        # other balance, list and total in the product. This was the one place
+        # that still showed them, so a reversed receipt kept appearing on the
+        # owner's home screen as though the money had arrived.
+        recent = Payment.objects.filter(voided_at__isnull=True).select_related(
             "tenant", "tenant__unit", "tenant__unit__building"
         ).order_by("-created_at")[:10]
         recent_list = []

@@ -14,7 +14,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts import audit
-from apps.accounts.permissions import CanForgiveMoney, CanRecordMoney
+from apps.accounts.permissions import (
+    CanBillUtilities,
+    CanForgiveMoney,
+    CanManageBooks,
+    CanRecordMoney,
+)
 from apps.tenants.models import Tenant
 
 from .models import (
@@ -302,10 +307,12 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
 
 class ArrearsViewSet(viewsets.ReadOnlyModelViewSet):
-    """Read-only arrears list."""
+    """Read-only arrears list, plus the billing run and the waiver action."""
 
     serializer_class = ArrearsSerializer
-    permission_classes = [IsAuthenticated]
+    # `sync` raises the month's rent for every active tenant, so it is a
+    # back-office write even though the viewset is otherwise read-only.
+    permission_classes = [CanManageBooks]
 
     def get_queryset(self):
         qs = Arrears.objects.select_related("tenant", "tenant__unit")
@@ -563,7 +570,9 @@ class UtilityChargeViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = UtilityChargeSerializer
-    permission_classes = [IsAuthenticated]
+    # Capturing a reading debits the tenant, so it is a write. Caretakers read
+    # the meters and may enter them; the tariff is server-side.
+    permission_classes = [CanBillUtilities]
 
     def get_queryset(self):
         qs = UtilityCharge.objects.select_related(

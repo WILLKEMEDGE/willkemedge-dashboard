@@ -83,6 +83,60 @@ class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """The fields a user may change on their OWN account.
+
+    Deliberately narrow. `role`, `is_staff`, `is_superuser` and `is_active` are
+    absent so a self-service profile edit can never be a privilege escalation —
+    this endpoint is reachable by every authenticated role, including `viewer`.
+    """
+
+    class Meta:
+        model = User
+        fields = ("first_name", "last_name", "email")
+
+    def validate_email(self, value):
+        email = (value or "").lower().strip()
+        if not email:
+            raise serializers.ValidationError("Email is required — it is your sign-in name.")
+        clash = User.objects.filter(email__iexact=email)
+        if self.instance is not None:
+            clash = clash.exclude(pk=self.instance.pk)
+        if clash.exists():
+            raise serializers.ValidationError("That email address is already in use.")
+        return email
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Change the password of the signed-in account.
+
+    The current password is required even though the caller is already
+    authenticated: a stolen access token should not be enough to take permanent
+    ownership of the account.
+    """
+
+    current_password = serializers.CharField(write_only=True, trim_whitespace=False)
+    new_password = serializers.CharField(write_only=True, min_length=12, trim_whitespace=False)
+
+    def validate_current_password(self, value):
+        user = self.context["user"]
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+    def validate_new_password(self, value):
+        from django.contrib.auth.password_validation import validate_password
+        validate_password(value, user=self.context["user"])
+        return value
+
+    def validate(self, attrs):
+        if attrs["current_password"] == attrs["new_password"]:
+            raise serializers.ValidationError(
+                {"new_password": "The new password must differ from the current one."}
+            )
+        return attrs
+
+
 class PasswordResetConfirmSerializer(serializers.Serializer):
     """Accepts a token + new password and completes the reset.
 

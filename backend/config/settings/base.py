@@ -134,6 +134,21 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
     ),
+    # ProtectedError / IntegrityError become 409s instead of 500s with a
+    # traceback. See config/exception_handler.py.
+    "EXCEPTION_HANDLER": "config.exception_handler.api_exception_handler",
+    # OPT-IN pagination. `PAGE_SIZE` is deliberately absent: LimitOffsetPagination
+    # returns the full, unpaginated list when the caller sends no `?limit=`, so
+    # switching this on changes no existing response shape and breaks no client.
+    # A caller that wants to bound a growing list (payments, transactions) can
+    # now ask for `?limit=100&offset=0` and get the standard
+    # {count, next, previous, results} envelope.
+    #
+    # Making pagination the DEFAULT is a follow-up that has to land with the
+    # frontend in the same release — every hook currently reads the response as
+    # a bare array. Tracked in the go-live checklist as a post-launch item.
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
+    "PAGE_SIZE": None,
 }
 
 SIMPLE_JWT = {

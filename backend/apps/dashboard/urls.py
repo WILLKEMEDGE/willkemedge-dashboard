@@ -2,6 +2,14 @@
 from django.urls import path
 
 from .views import DashboardSummaryView
+from .views_missing_reports import (
+    ExpiringLeasesReportView,
+    RentBalancesReportView,
+    RentOverpaymentsReportView,
+    TenantStatementReportView,
+    UnitStatementReportView,
+    VacantUnitsReportView,
+)
 from .views_reports import (
     AccountingDashboardView,
     AgingArrearsReportView,
@@ -31,4 +39,13 @@ urlpatterns = [
     path("reports/trial-balance/", TrialBalanceView.as_view(), name="trial-balance"),
     path("reports/expense-breakdown/", ExpenseBreakdownReportView.as_view(), name="expense-breakdown"),
     path("reports/accounting/", AccountingDashboardView.as_view(), name="accounting"),
+    # Routes the Reports page has always called and never had — see
+    # views_missing_reports for what each one is and why "landlord-statement"
+    # was removed from the UI instead of being invented here.
+    path("reports/rent-balances/", RentBalancesReportView.as_view(), name="rent-balances"),
+    path("reports/rent-overpayments/", RentOverpaymentsReportView.as_view(), name="rent-overpayments"),
+    path("reports/expiring-leases/", ExpiringLeasesReportView.as_view(), name="expiring-leases"),
+    path("reports/vacant-units/", VacantUnitsReportView.as_view(), name="vacant-units"),
+    path("reports/tenant-statement/<int:tenant_id>/", TenantStatementReportView.as_view(), name="tenant-statement"),
+    path("reports/unit-statement/<int:unit_id>/", UnitStatementReportView.as_view(), name="unit-statement"),
 ]

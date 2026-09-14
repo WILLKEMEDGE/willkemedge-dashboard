@@ -1,15 +1,21 @@
 """Settings/admin views: login audit log."""
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import LoginAttempt
+from .permissions import CanViewAuditLog
 
 
 class LoginAuditView(APIView):
-    """GET /api/auth/login-audit/ — recent login attempts."""
+    """GET /api/auth/login-audit/ — recent login attempts.
 
-    permission_classes = [IsAuthenticated]
+    Owner-only. The trail carries every staff email, the source IP of each
+    attempt and which accounts are being targeted by failures — reconnaissance
+    material, not portfolio data, so it is the one read in the system that is
+    not open to every authenticated role.
+    """
+
+    permission_classes = [CanViewAuditLog]
 
     def get(self, request):
         attempts = LoginAttempt.objects.all()[:50]
