@@ -151,6 +151,24 @@ export function useMoveOutTenant(id: number | string) {
   });
 }
 
+/** A moved-out tenant takes a vacant unit again — the one they left, another in
+ *  the block, or one in another property. Returns the NEW tenancy; the old one
+ *  stays as it was moved out. */
+export function useMoveInAgain(id: number | string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Record<string, unknown>) => {
+      const { data } = await api.post(`/tenants/${id}/move-in/`, payload);
+      return data as TenantDetail;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenants"] });
+      qc.invalidateQueries({ queryKey: ["units"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
 export function useUploadDocument(tenantId: number | string) {
   const qc = useQueryClient();
   return useMutation({
