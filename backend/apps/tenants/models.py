@@ -33,7 +33,11 @@ class Tenant(models.Model):
     # Identity
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    id_number = models.CharField(max_length=30, unique=True)
+    # A row is one tenancy, not one person: the unit, dates, payments and
+    # arrears all hang off it. So the same ID recurs when somebody moves out and
+    # later takes a unit again, and uniqueness is only enforced among current
+    # tenancies — see ``Meta.constraints``.
+    id_number = models.CharField(max_length=30, db_index=True)
     kra_pin = models.CharField(
         max_length=20, blank=True, validators=[kra_pin_validator],
         help_text="KRA PIN shown on rent statements (e.g. 'A007523148T'). Optional.",
@@ -148,6 +152,15 @@ class Tenant(models.Model):
         db_table = "tenants_tenant"
         # Active tenants first, then by move-in date descending
         ordering = ["-status", "-move_in_date"]
+        constraints = [
+            # One current tenancy per ID. A moved-out row keeps its ID as a
+            # historical record, which must not stop the person moving in again.
+            models.UniqueConstraint(
+                fields=["id_number"],
+                condition=models.Q(status__in=["active", "notice_given"]),
+                name="tenant_id_number_unique_while_current",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.first_name} {self.last_name} ({self.unit})"

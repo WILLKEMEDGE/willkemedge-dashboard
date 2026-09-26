@@ -7,7 +7,7 @@
  * and a rent reminder (SMS / Email).
  */
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, ArrowLeft, BellRing, Download, History, LogOut, Mail, Pencil, Phone, Plus, Send } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BellRing, Download, History, LogIn, LogOut, Mail, Pencil, Phone, Plus, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
@@ -19,6 +19,7 @@ import {
   Table, TBody, TD, TH, THead, TR,
 } from "@/components/ui";
 import { CreditsPanel } from "@/features/credits/CreditsPanel";
+import { MoveInAgainForm } from "@/features/tenants/MoveInAgainForm";
 import { Field, KycPanel, RemindModal, inputCls } from "@/features/tenants/shared";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreditPosition } from "@/hooks/useCredits";
@@ -85,7 +86,7 @@ const moveOutSchema = z.object({
 });
 type MoveOutFormValues = z.infer<typeof moveOutSchema>;
 
-type Mode = "view" | "edit" | "notice" | "moveout";
+type Mode = "view" | "edit" | "notice" | "moveout" | "movein";
 
 export default function TenantDetailPage() {
   const { id } = useParams();
@@ -229,6 +230,11 @@ export default function TenantDetailPage() {
 
   const isActive = tenant.status === "active" || tenant.status === "notice_given";
   const inArrears = tenant.payment_status === "in_arrears";
+  const tenancies = tenant.tenancies ?? [];
+  // Only a tenancy that has ended can be followed by another, and only while
+  // the person does not already hold a current one elsewhere.
+  const canMoveInAgain = tenant.status === "moved_out"
+    && !tenancies.some((t) => t.status === "active" || t.status === "notice_given");
 
   return (
     <div className="space-y-6">
@@ -279,6 +285,9 @@ export default function TenantDetailPage() {
           )}
           {!isActive && mode === "view" && (
             <>
+              {canMoveInAgain && (
+                <Button onClick={() => setMode("movein")}><LogIn className="h-4 w-4" /> Move In Again</Button>
+              )}
               {/* A tenant who has left can still be owed money back. */}
               {canManageCredit && (
                 <Button variant="outline" onClick={() => navigate(`/tenants/${id}/credits/new`)}>
@@ -422,6 +431,36 @@ export default function TenantDetailPage() {
               <Button type="submit" variant="danger" loading={moveOut.isPending}><LogOut className="h-4 w-4" /> Confirm move-out</Button>
             </div>
           </form>
+        </Card>
+      )}
+
+      {mode === "movein" && (
+        <Card padding="md">
+          <MoveInAgainForm tenant={tenant} onCancel={() => setMode("view")} />
+        </Card>
+      )}
+
+      {/* A returning tenant has one row per letting; link them together. */}
+      {tenancies.length > 1 && (
+        <Card padding="md">
+          <p className="text-xs uppercase tracking-wider text-content-muted">Tenancies</p>
+          <ul className="mt-2 divide-y divide-border text-sm">
+            {tenancies.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                {t.id === tenant.id ? (
+                  <span className="font-medium text-content">{t.building_name} · {t.unit_label} (this tenancy)</span>
+                ) : (
+                  <Link to={`/tenants/${t.id}`} className="font-medium text-sage-700 hover:underline">
+                    {t.building_name} · {t.unit_label}
+                  </Link>
+                )}
+                <span className="text-content-muted tabular-nums">
+                  {toDayFirst(t.move_in_date)} – {t.move_out_date ? toDayFirst(t.move_out_date) : "present"}
+                  {" · "}{t.status_display}
+                </span>
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
 

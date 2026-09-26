@@ -165,6 +165,17 @@ export interface TenantDetail extends TenantListItem {
   kyc_verified_by: number | null;
   kyc_verified_by_name: string | null;
   kyc_notes: string;
+  /** Every tenancy this person has held (matched on ID number), oldest first,
+   *  this one included — a returning tenant has one row per letting. */
+  tenancies?: {
+    id: number;
+    unit_label: string;
+    building_name: string;
+    move_in_date: string;
+    move_out_date: string | null;
+    status: TenantStatus;
+    status_display: string;
+  }[];
   documents: TenantDocument[];
   created_at: string;
   updated_at: string;
