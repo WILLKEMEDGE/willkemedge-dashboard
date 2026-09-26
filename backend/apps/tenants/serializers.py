@@ -144,6 +144,9 @@ class TenantDetailSerializer(serializers.ModelSerializer):
     kyc_complete = serializers.BooleanField(read_only=True)
     kyc_missing_items = serializers.ListField(child=serializers.CharField(), read_only=True)
     kyc_verified_by_name = serializers.CharField(source="kyc_verified_by.get_full_name", read_only=True, default=None)
+    # Every tenancy this person has held, this one included, so a returning
+    # tenant's page links to where they were before and where they went next.
+    tenancies = serializers.SerializerMethodField()
 
     class Meta:
         model = Tenant
@@ -162,11 +165,31 @@ class TenantDetailSerializer(serializers.ModelSerializer):
             "kyc_status", "kyc_status_display", "kyc_complete", "kyc_missing_items",
             "kyc_verified_at", "kyc_verified_by", "kyc_verified_by_name", "kyc_notes",
             "documents", "total_paid", "total_arrears", "payment_status",
+            "tenancies",
             "created_at", "updated_at",
         ]
         read_only_fields = [
             "status", "move_out_date", "move_out_notes", "created_at", "updated_at",
             "kyc_status", "kyc_verified_at", "kyc_verified_by", "kyc_notes",
+        ]
+
+    def get_tenancies(self, obj):
+        rows = (
+            Tenant.objects.filter(id_number=obj.id_number)
+            .select_related("unit", "unit__building")
+            .order_by("move_in_date", "pk")
+        )
+        return [
+            {
+                "id": t.pk,
+                "unit_label": t.unit.label,
+                "building_name": t.unit.building.name,
+                "move_in_date": t.move_in_date,
+                "move_out_date": t.move_out_date,
+                "status": t.status,
+                "status_display": t.get_status_display(),
+            }
+            for t in rows
         ]
 
     def get_deposit_months(self, obj):
@@ -322,6 +345,14 @@ class MoveOutSerializer(serializers.Serializer):
     move_out_date = serializers.DateField(required=False)
     notes = serializers.CharField(required=False, allow_blank=True, default="")
     deposit_refund_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=100)
+
+
+# What a returning tenant's new letting is made of. Everything else — who they
+# are — is carried over from the tenancy they moved out of.
+MOVE_IN_AGAIN_FIELDS = (
+    "unit", "monthly_rent", "deposit_paid", "due_day", "move_in_date", "notes",
+    "is_billable", "deposit_source", "deposit_date", "deposit_reference",
+)
 
 
 class DocumentUploadSerializer(serializers.Serializer):

@@ -13,6 +13,7 @@ from apps.buildings.unit_order import unit_sort_key
 
 from .models import Tenant, TenantDocument, TenantStatus
 from .serializers import (
+    MOVE_IN_AGAIN_FIELDS,
     DocumentUploadSerializer,
     KycRejectSerializer,
     MoveOutNoticeSerializer,
@@ -25,9 +26,11 @@ from .serializers import (
     rent_roll_balances,
 )
 from .services import (
+    IDENTITY_FIELDS,
     DepositAdjustmentError,
     FileValidationError,
     adjust_deposit_held,
+    carry_over_identity,
     move_in_tenant,
     move_out_tenant,
     record_initial_deposit,
@@ -185,17 +188,21 @@ class TenantViewSet(viewsets.ModelViewSet):
         here to prevent, so a failure to post it must take the registration
         down with it rather than leave the two disagreeing.
         """
-        data = serializer.validated_data
         with transaction.atomic():
-            tenant = serializer.save()
-            move_in_tenant(tenant)
-            record_initial_deposit(
-                tenant,
-                received_on=data.get("deposit_date") or tenant.move_in_date,
-                source=data.get("deposit_source") or "cash",
-                reference=data.get("deposit_reference", ""),
-                created_by=self.request.user,
-            )
+            self._register(serializer)
+
+    def _register(self, serializer):
+        data = serializer.validated_data
+        tenant = serializer.save()
+        move_in_tenant(tenant)
+        record_initial_deposit(
+            tenant,
+            received_on=data.get("deposit_date") or tenant.move_in_date,
+            source=data.get("deposit_source") or "cash",
+            reference=data.get("deposit_reference", ""),
+            created_by=self.request.user,
+        )
+        return tenant
 
     def perform_update(self, serializer):
         """Save the edit, and book any change the director made to the deposit.
@@ -287,6 +294,57 @@ class TenantViewSet(viewsets.ModelViewSet):
                 notes=ser.validated_data.get("notes", ""),
             )
         return Response(TenantDetailSerializer(tenant).data)
+
+    @action(detail=True, methods=["post"], url_path="move-in")
+    def move_in_again(self, request, pk=None):
+        """POST /api/tenants/<id>/move-in/ — a moved-out tenant takes a unit again.
+
+        Any vacant unit: the one they left, another in the same building, or one
+        in another property. The move-out is left exactly as it was and a new
+        tenancy is registered through the same path as a new tenant — the unit
+        must be vacant, it is occupied, and any deposit is booked — with the
+        person's identity and KYC carried over from this tenancy.
+
+        Returns the NEW tenancy (201). Body: ``unit``, ``monthly_rent``,
+        ``move_in_date`` and optionally the deposit / due day / notes fields.
+        """
+        previous = self.get_object()
+        if previous.is_active:
+            return Response(
+                {"detail": "This tenant has not moved out. Move them out first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        current = (
+            Tenant.objects.filter(
+                id_number=previous.id_number,
+                status__in=[TenantStatus.ACTIVE, TenantStatus.NOTICE_GIVEN],
+            )
+            .select_related("unit")
+            .first()
+        )
+        if current:
+            return Response(
+                {"detail": f"{current.full_name} already has a current tenancy in unit {current.unit.label}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = {field: getattr(previous, field) for field in IDENTITY_FIELDS}
+        data.update({k: request.data[k] for k in MOVE_IN_AGAIN_FIELDS if k in request.data})
+        ser = TenantCreateSerializer(data=data)
+        ser.is_valid(raise_exception=True)
+        move_in_date = ser.validated_data["move_in_date"]
+        if previous.move_out_date and move_in_date < previous.move_out_date:
+            return Response(
+                {"move_in_date": [
+                    f"Cannot be before this tenant moved out on {previous.move_out_date:%d/%m/%Y}."
+                ]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            tenant = self._register(ser)
+            carry_over_identity(previous, tenant)
+        return Response(TenantDetailSerializer(tenant).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="documents", parser_classes=[MultiPartParser, FormParser])
     def upload_document(self, request, pk=None):

@@ -3,6 +3,7 @@ Tenant lifecycle operations.
 
 move_in_tenant:  Assign tenant to unit → unit status → OCCUPIED_UNPAID.
 move_out_tenant: Record move-out date → unit status → VACANT → tenant archived.
+carry_over_identity: Copy a returning tenant's KYC onto their new tenancy.
 """
 import os
 import re
@@ -333,4 +334,45 @@ def move_out_tenant(
     tenant.save(update_fields=["move_out_date", "move_out_notes", "status", "updated_at"])
 
     unit_move_out(tenant.unit)
+    return tenant
+
+
+# The person, as opposed to the letting. Copied from a moved-out tenancy onto
+# the new one so the office does not re-key somebody it already knows.
+IDENTITY_FIELDS = (
+    "first_name", "last_name", "id_number", "kra_pin", "phone", "email",
+    "emergency_contact", "emergency_phone",
+)
+
+
+@transaction.atomic
+def carry_over_identity(previous: Tenant, tenant: Tenant) -> Tenant:
+    """Give a returning tenant's new tenancy the KYC already done on the old one.
+
+    Moving back in — to the same unit, another in the block, or another
+    property — is a new tenancy row, never the old one reopened: the old row's
+    payments, arrears, ledger and statement all belong to the unit and dates it
+    records, and reusing it would re-attribute that history to the new letting.
+
+    The identity documents are the same person's, so their rows are copied
+    across pointing at the same stored files, and a verified KYC stays verified.
+    """
+    from .models import TenantDocument
+
+    tenant.care_of = previous.care_of
+    tenant.kyc_status = previous.kyc_status
+    tenant.kyc_verified_at = previous.kyc_verified_at
+    tenant.kyc_verified_by = previous.kyc_verified_by
+    tenant.kyc_notes = previous.kyc_notes
+    tenant.save(update_fields=[
+        "care_of", "kyc_status", "kyc_verified_at", "kyc_verified_by", "kyc_notes",
+        "updated_at",
+    ])
+    TenantDocument.objects.bulk_create(
+        TenantDocument(
+            tenant=tenant, doc_type=doc.doc_type, file=doc.file.name,
+            original_name=doc.original_name,
+        )
+        for doc in previous.documents.all()
+    )
     return tenant
