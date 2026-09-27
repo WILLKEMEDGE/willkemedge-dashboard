@@ -90,6 +90,11 @@ class BuildingSerializer(serializers.ModelSerializer):
     unit_count = serializers.IntegerField(read_only=True)
     occupied_count = serializers.IntegerField(read_only=True)
     allows_income = serializers.BooleanField(read_only=True)
+    # The photo itself is served by /buildings/<id>/photo/; the list only says
+    # whether there is one, and a version that changes whenever it does so the
+    # browser's copy is refreshed.
+    has_photo = serializers.SerializerMethodField()
+    photo_version = serializers.DateTimeField(source="photo_updated_at", read_only=True)
     property_type_display = serializers.CharField(source="get_property_type_display", read_only=True)
 
     class Meta:
@@ -101,9 +106,13 @@ class BuildingSerializer(serializers.ModelSerializer):
             "legal_name", "postal_address", "contact_phone", "contact_email",
             "paybill_number", "paybill_account_format",
             "bank_name", "bank_branch", "bank_account", "bank_account_name",
-            "unit_count", "occupied_count", "created_at", "updated_at",
+            "unit_count", "occupied_count", "has_photo", "photo_version",
+            "created_at", "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+    def get_has_photo(self, obj) -> bool:
+        return bool(obj.photo_content_type)
 
 
 class BuildingDetailSerializer(BuildingSerializer):
