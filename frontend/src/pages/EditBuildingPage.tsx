@@ -14,8 +14,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
 import { Button, Card, ErrorState, PageHeader, Skeleton } from "@/components/ui";
+import { PhotoPicker } from "@/features/buildings/PhotoPicker";
 import { Field, inputCls } from "@/features/tenants/shared";
-import { useBuilding, useUpdateBuilding } from "@/hooks/useBuildings";
+import {
+  useBuilding,
+  useBuildingPhotoSrc,
+  useRemoveBuildingPhoto,
+  useSetBuildingPhoto,
+  useUpdateBuilding,
+} from "@/hooks/useBuildings";
 import { getErrorMessage } from "@/lib/apiError";
 
 const schema = z.object({
@@ -33,6 +40,9 @@ export default function EditBuildingPage() {
   const navigate = useNavigate();
   const { data: building, isLoading, isError, refetch } = useBuilding(id);
   const updateBuilding = useUpdateBuilding(id);
+  const setPhoto = useSetBuildingPhoto();
+  const removePhoto = useRemoveBuildingPhoto();
+  const photoSrc = useBuildingPhotoSrc(building);
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema) });
   const { register, handleSubmit, reset, formState: { errors, isDirty } } = form;
@@ -47,6 +57,26 @@ export default function EditBuildingPage() {
       });
     }
   }, [building, reset]);
+
+  // A photo change is saved straight away, apart from the form: it is its own
+  // upload, and a half-typed form should not hold it back.
+  async function changePhoto(blob: Blob) {
+    try {
+      await setPhoto.mutateAsync({ id, photo: blob });
+      toast.success("Photo updated");
+    } catch (e) {
+      toast.error(getErrorMessage(e, "The photo could not be uploaded."));
+    }
+  }
+
+  async function dropPhoto() {
+    try {
+      await removePhoto.mutateAsync(id);
+      toast.success("Photo removed. A stock picture is shown instead.");
+    } catch (e) {
+      toast.error(getErrorMessage(e, "The photo could not be removed."));
+    }
+  }
 
   async function save(values: FormValues) {
     try {
@@ -80,8 +110,10 @@ export default function EditBuildingPage() {
         <PageHeader className="mb-0" eyebrow="Edit building" title={building.name} />
       </div>
 
-      <Card variant="glass" padding="md" className="max-w-3xl animate-fade-up">
-        <form onSubmit={handleSubmit(save)} className="space-y-4">
+      <Card variant="glass" padding="md" className="animate-fade-up">
+        <form onSubmit={handleSubmit(save)} className="space-y-6">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
+          <div className="min-w-0 space-y-4">
           <Field label="Name *" error={errors.name?.message}>
             <input {...register("name")} className={inputCls} />
           </Field>
@@ -94,12 +126,21 @@ export default function EditBuildingPage() {
             </Field>
           </div>
           <Field label="Notes">
-            <textarea rows={4} {...register("notes")} className={inputCls} />
+            <textarea rows={5} {...register("notes")} className={inputCls} />
           </Field>
           <p className="text-xs text-content-muted">
             Unit rents are changed from the building&rsquo;s card on the Buildings page, under{" "}
             <span className="font-medium text-content">Edit unit rents &amp; repairs</span>.
           </p>
+          </div>
+          <PhotoPicker
+            src={photoSrc}
+            isPlaceholder={!building.has_photo}
+            onPick={(blob) => void changePhoto(blob)}
+            onRemove={() => void dropPhoto()}
+            busy={setPhoto.isPending || removePhoto.isPending}
+          />
+          </div>
           <div className="flex justify-end gap-2 border-t border-hairline pt-4">
             <Button type="button" variant="ghost" onClick={() => navigate(BACK_TO)}>Cancel</Button>
             <Button type="submit" loading={updateBuilding.isPending} disabled={!isDirty}>

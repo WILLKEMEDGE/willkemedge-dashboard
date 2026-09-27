@@ -2,15 +2,17 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q, Sum
+from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import CanRecordMoney
 from apps.expenses.models import Expense, ExpenseCategory
 
-from . import spaces
+from . import photos, spaces
 from .models import (
     OCCUPIED_UNIT_STATUSES,
     Building,
@@ -37,7 +39,7 @@ class BuildingViewSet(viewsets.ModelViewSet):
             occupied_count=Count(
                 "units", filter=Q(units__status__in=OCCUPIED_UNIT_STATUSES)
             ),
-        ).order_by("name")
+        ).defer("photo").order_by("name")
         if self.action == "retrieve":
             # The detail payload serialises every unit with its combined space.
             qs = qs.prefetch_related(Prefetch(
@@ -73,6 +75,37 @@ class BuildingViewSet(viewsets.ModelViewSet):
 
         refreshed = self.get_queryset().get(pk=building.pk)
         return Response(BuildingDetailSerializer(refreshed, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True, methods=["get", "put", "delete"], url_path="photo",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def photo(self, request, pk=None):
+        """GET/PUT/DELETE /api/buildings/{id}/photo/ — the building's cover photo.
+
+        PUT takes a multipart ``photo`` file. GET returns the image bytes, or 404
+        when there is none and the card should show its placeholder.
+        """
+        building = self.get_object()
+        if request.method == "GET":
+            data = Building.objects.filter(pk=building.pk).values_list("photo", flat=True).first()
+            if not data or not building.photo_content_type:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            response = HttpResponse(bytes(data), content_type=building.photo_content_type)
+            response["Cache-Control"] = "private, max-age=86400"
+            response["X-Content-Type-Options"] = "nosniff"
+            return response
+        if request.method == "DELETE":
+            photos.clear_photo(building)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        upload = request.FILES.get("photo")
+        if upload is None:
+            return Response({"detail": "Attach a photo."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            photos.set_photo(building, upload)
+        except DjangoValidationError as exc:
+            return Response({"detail": " ".join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(BuildingSerializer(self.get_queryset().get(pk=building.pk)).data)
 
     @action(detail=True, methods=["post"], url_path="adjust-rent")
     def adjust_rent(self, request, pk=None):
