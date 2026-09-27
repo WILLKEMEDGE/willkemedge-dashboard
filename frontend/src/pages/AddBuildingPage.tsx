@@ -13,18 +13,20 @@
  */
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, ArrowRight, Check, Copy, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 
-import { Button, Card, PageHeader, Table, TBody, TD, TH, THead, TR } from "@/components/ui";
+import { Button, Card, Table, TBody, TD, TH, THead, TR } from "@/components/ui";
+import { PhotoPicker } from "@/features/buildings/PhotoPicker";
 import { Field, inputCls } from "@/features/tenants/shared";
-import { useCreateBuilding } from "@/hooks/useBuildings";
+import { useCreateBuilding, useSetBuildingPhoto } from "@/hooks/useBuildings";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/apiError";
 import { cn } from "@/lib/cn";
+import { propertyImage } from "@/lib/images";
 import { formatKES } from "@/lib/money";
 import type { UnitClassification, UnitType } from "@/lib/types";
 import { useQueryClient } from "@tanstack/react-query";
@@ -71,7 +73,20 @@ const STEPS = ["The building", "Its units", "Review"] as const;
 const floorName = (f: number) => (f === 0 ? "Ground floor" : `Floor ${f}`);
 
 // ─── Step 1 ──────────────────────────────────────────────────────────────────
-function BuildingStep({ initial, onNext }: { initial: BuildingValues | null; onNext: (v: BuildingValues) => void }) {
+type Photo = { blob: Blob; url: string } | null;
+
+// Shown until a photo is chosen. The card picks its own stock picture once the
+// building exists, so this one is only ever described as "a stock picture".
+const NEW_BUILDING_PLACEHOLDER = propertyImage("new-building", "md");
+
+function BuildingStep({
+  initial, photo, onPhoto, onNext,
+}: {
+  initial: BuildingValues | null;
+  photo: Photo;
+  onPhoto: (blob: Blob | null) => void;
+  onNext: (v: BuildingValues) => void;
+}) {
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<BuildingValues>({
     resolver: zodResolver(buildingSchema),
     defaultValues: initial ?? {
@@ -82,7 +97,9 @@ function BuildingStep({ initial, onNext }: { initial: BuildingValues | null; onN
   const unitCount = Number(watch("unit_count")) || 0;
 
   return (
-    <form onSubmit={handleSubmit(onNext)} className="space-y-5">
+    <form onSubmit={handleSubmit(onNext)} className="space-y-6">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
+      <div className="min-w-0 space-y-5">
       <fieldset>
         <legend className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-content-muted">
           Building type *
@@ -114,13 +131,15 @@ function BuildingStep({ initial, onNext }: { initial: BuildingValues | null; onN
         </div>
       </fieldset>
 
-      <Field label="Building name *" error={errors.name?.message}>
-        <input {...register("name")} className={inputCls} placeholder="e.g. Wilkem Edge Apartments - Donholm" />
-      </Field>
-      <Field label="Address">
-        <input {...register("address")} className={inputCls} placeholder="Street, estate, town" />
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Building name *" error={errors.name?.message}>
+          <input {...register("name")} className={inputCls} placeholder="e.g. Wilkem Edge Apartments - Donholm" />
+        </Field>
+        <Field label="Address">
+          <input {...register("address")} className={inputCls} placeholder="Street, estate, town" />
+        </Field>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
         <Field label="Number of floors *" error={errors.total_floors?.message} hint="Count the ground floor as one.">
           <input type="number" min={1} max={50} {...register("total_floors")} className={inputCls} />
         </Field>
@@ -133,8 +152,17 @@ function BuildingStep({ initial, onNext }: { initial: BuildingValues | null; onN
         </Field>
       </div>
       <Field label="Notes">
-        <textarea {...register("notes")} rows={3} className={inputCls} />
+        <textarea {...register("notes")} rows={4} className={inputCls} />
       </Field>
+      </div>
+
+      <PhotoPicker
+        src={photo?.url ?? NEW_BUILDING_PLACEHOLDER}
+        isPlaceholder={!photo}
+        onPick={(blob) => onPhoto(blob)}
+        onRemove={() => onPhoto(null)}
+      />
+      </div>
 
       <div className="flex justify-end gap-2 border-t border-hairline pt-4">
         <Link to={BACK_TO} className="inline-flex h-10 items-center rounded-md px-4 text-sm font-medium text-content-secondary hover:bg-hover hover:text-content">
@@ -264,13 +292,24 @@ function UnitsStep({
 
 // ─── Step 3 ──────────────────────────────────────────────────────────────────
 function ReviewStep({
-  building, units, onBack, onConfirm, saving,
+  building, units, photo, onBack, onConfirm, saving,
 }: {
-  building: BuildingValues; units: UnitRow[]; onBack: () => void; onConfirm: () => void; saving: boolean;
+  building: BuildingValues; units: UnitRow[]; photo: Photo; onBack: () => void; onConfirm: () => void; saving: boolean;
 }) {
   const totalRent = units.reduce((sum, u) => sum + Number(u.monthly_rent), 0);
   return (
     <div className="space-y-5">
+      <div className="grid gap-6 md:grid-cols-[12rem_minmax(0,1fr)] md:items-start">
+      <figure className="space-y-1">
+        <img
+          src={photo?.url ?? NEW_BUILDING_PLACEHOLDER}
+          alt=""
+          className="aspect-[4/3] w-full rounded-md border border-border object-cover"
+        />
+        <figcaption className="text-[11px] text-content-muted">
+          {photo ? "Your photo" : "No photo: a stock picture is shown"}
+        </figcaption>
+      </figure>
       <dl className="grid gap-4 sm:grid-cols-4">
         <div className="sm:col-span-2">
           <dt className="text-[11px] uppercase tracking-[0.14em] text-content-muted">Building</dt>
@@ -289,6 +328,7 @@ function ReviewStep({
           </dd>
         </div>
       </dl>
+      </div>
 
       <Table minWidth={480}>
         <THead>
@@ -326,6 +366,11 @@ export default function AddBuildingPage() {
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [building, setBuilding] = useState<BuildingValues | null>(null);
   const [units, setUnits] = useState<UnitRow[] | null>(null);
+  const [photo, setPhotoState] = useState<Photo>(null);
+  const setPhoto = useSetBuildingPhoto();
+  // One object URL per chosen photo, released when it is replaced or the page closes.
+  useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url); }, [photo]);
+  const choosePhoto = (blob: Blob | null) => setPhotoState(blob ? { blob, url: URL.createObjectURL(blob) } : null);
   // Set once the building row exists, so a retry after a unit failure adds the
   // units to it instead of creating the building a second time.
   const [createdId, setCreatedId] = useState<number | null>(null);
@@ -362,6 +407,15 @@ export default function AddBuildingPage() {
       qc.invalidateQueries({ queryKey: ["buildings"] });
       qc.invalidateQueries({ queryKey: ["units"] });
       toast.success(`${building.name} created with ${units.length} unit${units.length === 1 ? "" : "s"}`);
+      if (photo) {
+        // The building stands without its photo, so a failed upload is only a
+        // warning: it can be added later from Edit.
+        try {
+          await setPhoto.mutateAsync({ id, photo: photo.blob });
+        } catch (e) {
+          toast.error(getErrorMessage(e, "The photo could not be uploaded. Add it from Edit on the building's card."));
+        }
+      }
       navigate(BACK_TO);
     } catch (e) {
       toast.error(
@@ -383,7 +437,9 @@ export default function AddBuildingPage() {
         <Link to={BACK_TO} className="mb-2 inline-flex items-center gap-1 text-sm text-content-muted hover:text-content">
           <ArrowLeft className="h-4 w-4" /> Back to Buildings
         </Link>
-        <PageHeader className="mb-0" eyebrow="New building" title="Add a building" />
+        {/* The step line below says where the owner is; the title is for screen readers only. */}
+        <p className="text-xs font-semibold uppercase tracking-wider text-teal-700 dark:text-teal-600">New building</p>
+        <h1 className="sr-only">Add a building</h1>
       </div>
 
       <ol className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" aria-label="Progress">
@@ -402,10 +458,12 @@ export default function AddBuildingPage() {
         ))}
       </ol>
 
-      <Card variant="glass" padding="md" className={cn("animate-fade-up", step === 0 && "max-w-3xl")}>
+      <Card variant="glass" padding="md" className="animate-fade-up">
         {step === 0 && (
           <BuildingStep
             initial={building}
+            photo={photo}
+            onPhoto={choosePhoto}
             onNext={(v) => { setBuilding(v); setStep(1); }}
           />
         )}
@@ -421,6 +479,7 @@ export default function AddBuildingPage() {
           <ReviewStep
             building={building}
             units={units}
+            photo={photo}
             onBack={() => setStep(1)}
             onConfirm={confirm}
             saving={saving}
