@@ -11,6 +11,8 @@ plus the units that point at it through ``Unit.combined_into``:
     the ledger — all of which hang off ``Tenant.unit`` — are unchanged;
   * the other units mirror the head's status (``Unit.save``), so occupancy
     counts them as let and none of them can be let separately;
+  * when the tenancy ends the space is released (``release_space``, called
+    from move-out): every unit goes back to vacant and lettable on its own;
   * a payment quoting any unit in the space reaches the tenant (the matcher
     resolves a member to its head);
   * the rent that bills is still ``Tenant.monthly_rent``. Adding or removing a
@@ -157,3 +159,33 @@ def reconfigure_space(
         new_values={"space": after, **({"monthly_rent": new_rent} if tenant else {})},
     )
     return SpaceChange(head, add, remove, tenant, old_rent, new_rent)
+
+
+@transaction.atomic
+def release_space(head: Unit, *, actor=None) -> list[Unit]:
+    """Break up the space headed by ``head`` when its tenancy ends.
+
+    A combined space exists for the tenant who took it. Once they have gone,
+    each unit goes back to being let on its own, vacant, rather than staying
+    tied to a head nobody occupies. Returns the units released.
+    """
+    from apps.accounts import audit
+
+    members = list(Unit.objects.select_for_update().filter(combined_into=head).order_by("label"))
+    if not members:
+        return []
+    before = head.space_label
+    for unit in members:
+        unit.combined_into = None
+        unit.status = UnitStatus.VACANT
+        unit.save(update_fields=["combined_into", "status", "updated_at"])
+    audit.record(
+        action="unit.space_release",
+        object_type="unit",
+        object_id=head.pk,
+        summary=f"Space {before} released on move-out",
+        actor=actor,
+        old_values={"space": before},
+        new_values={"space": head.label},
+    )
+    return members
