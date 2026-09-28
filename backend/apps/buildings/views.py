@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts import audit
 from apps.accounts.permissions import CanRecordMoney
 from apps.expenses.models import Expense, ExpenseCategory
 
@@ -202,8 +203,24 @@ class UnitViewSet(viewsets.ModelViewSet):
         new_status = request.data.get("status")
         if new_status not in dict(UnitStatus.choices):
             return Response({"detail": "Invalid status."}, status=status.HTTP_400_BAD_REQUEST)
+        old_status = unit.status
         unit.status = new_status
         unit.save(update_fields=["status", "updated_at"])
+        if old_status != new_status:
+            # Status is otherwise derived from payments and not auto-audited;
+            # setting it by hand (e.g. under maintenance) is a decision.
+            labels = dict(UnitStatus.choices)
+            audit.record(
+                action="unit.set_status",
+                object_type="unit",
+                object_id=unit.pk,
+                object_label=unit.label,
+                summary=f"Set unit {unit.label} to {labels[new_status]} (was {labels.get(old_status, old_status)})",
+                old_values={"status": old_status},
+                new_values={"status": new_status},
+                actor=request.user,
+                is_financial=False,
+            )
         return Response(UnitSerializer(unit).data)
 
 

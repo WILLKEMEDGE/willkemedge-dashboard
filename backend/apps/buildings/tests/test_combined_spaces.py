@@ -6,7 +6,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from rest_framework.test import APIClient
 
-from apps.accounts.models import FinancialAuditLog, User
+from apps.accounts.models import AuditLog, User
 from apps.buildings.models import Building, Unit, UnitClassification, UnitStatus
 from apps.buildings.spaces import reconfigure_space
 from apps.payments.matching import match_tenant
@@ -92,7 +92,7 @@ def test_shrinking_frees_the_unit_and_drops_its_rent(hospital):
 def test_change_is_audited(hospital):
     head, tenant, (g06, *_rest) = hospital
     reconfigure_space(head, add=[g06])
-    row = FinancialAuditLog.objects.get(action="unit.space_reconfigure")
+    row = AuditLog.objects.get(action="unit.space_reconfigure")
     assert row.object_id == tenant.pk
     assert row.old_values == {"space": "MCG05", "monthly_rent": "86500.00"}
     assert row.new_values == {"space": "MCG05 + MCG06", "monthly_rent": "101500.00"}
