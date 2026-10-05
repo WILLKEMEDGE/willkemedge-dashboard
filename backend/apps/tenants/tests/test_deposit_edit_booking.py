@@ -196,10 +196,15 @@ class TheBooksFollowTheEdit(DepositBookingTestCase):
         assert resp.status_code == status.HTTP_200_OK, resp.content
         body = resp.json()
         assert body["balanced"] is True
-        return (
-            D(str(body["liabilities"]["2100 Tenant Security Deposits Held"])),
-            D(str(body["assets"]["1030 Tenant Security Deposit Bank Account"])),
-        )
+
+        def amount(side, code):
+            for group in body[side]:
+                for account in group["accounts"]:
+                    if account["code"] == code:
+                        return D(str(account["amount"]))
+            return D("0")
+
+        return amount("liabilities", "2100"), amount("assets", "1030")
 
     def test_the_balance_sheet_follows_a_raise_and_a_cut(self):
         tenant = self._let("WED50")

@@ -143,9 +143,10 @@ class ReportsTests(APITestCase):
         # Commercial rent is received VAT-inclusive, so the 12,000 collected is
         # 10,344.83 of income + 1,655.17 of VAT owed to KRA. VAT is a liability,
         # not revenue, so it is correctly excluded from the P&L.
-        assert body["residential_income"] == 10000.0
-        assert body["commercial_income"] == 10344.83
-        assert body["rental_income"] == 20344.83
+        income = {a["code"]: a["amount"] for g in body["income"] for a in g["accounts"]}
+        assert income["4110"] == 10000.0
+        assert income["4120"] == 10344.83
+        assert body["total_income"] == 20344.83
         assert body["total_expenses"] == 4500.0
         assert body["net_profit"] == 15844.83
 

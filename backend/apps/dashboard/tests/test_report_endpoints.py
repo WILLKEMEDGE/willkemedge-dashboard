@@ -221,8 +221,10 @@ class ReportEndpointsTests(APITestCase):
         # which the ledger books to 4150 when billed while the payment-derived
         # reports count cash — the open "1040" basis difference, not this fix.
         ledger_pnl = self.get("/api/reports/accounting/", tab="pnl", month=JUL, year=YEAR)
-        assert ledger_pnl["other_income"] == 5500.0
-        assert ledger_pnl["income"] == 49500.0
+        ledger_income = {a["code"]: a["amount"] for g in ledger_pnl["income"] for a in g["accounts"]}
+        assert ledger_income["4300"] == 5000.0
+        assert ledger_income["4150"] == 500.0
+        assert ledger_pnl["total_income"] == 49500.0
 
     def test_landlord_statement_matches_the_pnl(self):
         for building in (None, self.north.id, self.farm.id):

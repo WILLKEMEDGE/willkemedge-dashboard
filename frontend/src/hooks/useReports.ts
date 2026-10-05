@@ -42,6 +42,9 @@ export function useReport<T = any>(
     staleTime: 0,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
+    // While a report is on screen it keeps itself current: payments arrive
+    // from the bank feed without anyone touching this tab.
+    refetchInterval: 60_000,
     placeholderData: keepPrevious ? keepPreviousData : undefined,
   });
 }
@@ -84,10 +87,6 @@ export function useTrialBalance(month: number, year: number, building?: number |
 
 export function useExpenseBreakdown(month: number, year: number, building?: number | null) {
   return useReport("/reports/expense-breakdown/", { month, year, building });
-}
-
-export function useReportsAccounting(tab: string, month: number, year: number) {
-  return useReport<Record<string, unknown>>("/reports/accounting/", { tab, month, year }, true, false);
 }
 
 export function useRentBalances(month: number, year: number, filters: ReportParams = {}) {
