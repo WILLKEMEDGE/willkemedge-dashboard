@@ -120,7 +120,7 @@ def test_move_out_releases_the_space(hospital):
         assert unit.status == UnitStatus.VACANT
         assert unit.combined_into is None
     assert head.space_label == "MCG05"
-    assert FinancialAuditLog.objects.filter(action="unit.space_release", object_id=head.pk).exists()
+    assert AuditLog.objects.filter(action="unit.space_release", object_id=head.pk).exists()
 
 
 def test_a_released_unit_can_be_let_on_its_own(hospital):
