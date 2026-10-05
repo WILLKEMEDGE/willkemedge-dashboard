@@ -15,6 +15,15 @@ from .views_reports import (
     TenantPaymentHistoryView,
     TrialBalanceView,
 )
+from .views_statements import (
+    ExpiringLeasesReportView,
+    LandlordStatementReportView,
+    RentBalancesReportView,
+    RentOverpaymentsReportView,
+    TenantStatementReportView,
+    UnitStatementReportView,
+    VacantUnitsReportView,
+)
 
 app_name = "dashboard"
 
@@ -31,4 +40,11 @@ urlpatterns = [
     path("reports/trial-balance/", TrialBalanceView.as_view(), name="trial-balance"),
     path("reports/expense-breakdown/", ExpenseBreakdownReportView.as_view(), name="expense-breakdown"),
     path("reports/accounting/", AccountingDashboardView.as_view(), name="accounting"),
+    path("reports/rent-balances/", RentBalancesReportView.as_view(), name="rent-balances"),
+    path("reports/rent-overpayments/", RentOverpaymentsReportView.as_view(), name="rent-overpayments"),
+    path("reports/expiring-leases/", ExpiringLeasesReportView.as_view(), name="expiring-leases"),
+    path("reports/vacant-units/", VacantUnitsReportView.as_view(), name="vacant-units"),
+    path("reports/tenant-statement/<int:tenant_id>/", TenantStatementReportView.as_view(), name="tenant-statement"),
+    path("reports/unit-statement/<int:unit_id>/", UnitStatementReportView.as_view(), name="unit-statement"),
+    path("reports/landlord-statement/", LandlordStatementReportView.as_view(), name="landlord-statement"),
 ]
