@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import AuthLayout from "@/components/AuthLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AccountingPage from "@/pages/AccountingPage";
+import ActivityPage from "@/pages/ActivityPage";
 import BuildingDetailPage from "@/pages/BuildingDetailPage";
 import BuildingsPage from "@/pages/BuildingsPage";
 import AddBuildingPage from "@/pages/AddBuildingPage";
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/accounting" element={<AccountingPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/activity" element={<ActivityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
 

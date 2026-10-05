@@ -5,7 +5,7 @@ Every function here is atomic, locks the tenant first (so two clicks can never
 use the same credit twice), posts its journal entry STRICTLY — if the ledger
 refuses the entry the whole action rolls back, because a credit that is on the
 tenant's account but not in the books is exactly the drift this exists to stop
-— and writes a FinancialAuditLog row.
+— and writes an AuditLog row.
 
 Vocabulary, as the owner sees it on the tenant page:
 
