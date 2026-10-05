@@ -103,6 +103,9 @@ TRACKED = [
     ),
     Tracked(
         "buildings.Building", "building", "building", _safe(lambda b: b.name),
+        # The cover photo is image bytes: log that it changed, never the bytes.
+        secret=frozenset({"photo"}),
+        ignore=frozenset({"photo_content_type", "photo_updated_at"}),
         financial=frozenset({
             "water_rate_per_unit", "paybill_number", "paybill_account_format",
             "bank_name", "bank_branch", "bank_account", "bank_account_name",

@@ -3,7 +3,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
-from apps.accounts.models import User
+from apps.accounts.models import AuditLog, User
 from apps.buildings.models import Building
 from apps.buildings.photos import MAX_PHOTO_BYTES, sniff_image_type
 
@@ -81,3 +81,14 @@ def test_remove_falls_back_to_placeholder(client, building):
 
 def test_photo_needs_a_login(building):
     assert APIClient().get(f"/api/buildings/{building.pk}/photo/").status_code == 401
+
+
+def test_audit_log_notes_the_photo_change_without_the_image(client, building):
+    client.put(f"/api/buildings/{building.pk}/photo/", {"photo": _upload(PNG)}, format="multipart")
+    rows = AuditLog.objects.filter(object_type="building", object_id=building.pk)
+    photo_rows = [r for r in rows if "photo" in r.new_values]
+    assert photo_rows, "the photo change should be on the building's history"
+    for r in photo_rows:
+        assert r.new_values["photo"] == "(hidden)"
+        assert "PNG" not in str(r.new_values) and "PNG" not in str(r.old_values)
+        assert "photo_updated_at" not in r.new_values
