@@ -110,6 +110,16 @@ class Building(models.Model):
     bank_account = models.CharField(max_length=40, blank=True)
     bank_account_name = models.CharField(max_length=120, blank=True)
 
+    # The cover photo on the building's card. Kept in the database rather than
+    # on disk: the Render service has no persistent disk, so a file written to
+    # MEDIA_ROOT would be gone after the next deploy. The browser shrinks the
+    # picture before upload (a few hundred KB), and list queries defer this
+    # column so the buildings page never loads it. No photo means the card
+    # shows a stock placeholder instead.
+    photo = models.BinaryField(null=True, blank=True, editable=False)
+    photo_content_type = models.CharField(max_length=20, blank=True, editable=False)
+    photo_updated_at = models.DateTimeField(null=True, blank=True, editable=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -14,6 +14,7 @@ from django.db import transaction
 
 from apps.buildings.services import move_in as unit_move_in
 from apps.buildings.services import move_out as unit_move_out
+from apps.buildings.spaces import release_space
 
 from .models import Tenant, TenantStatus
 
@@ -327,6 +328,8 @@ def move_out_tenant(
     2. Record move_out_notes
     3. Flip tenant status → MOVED_OUT
     4. Flip unit status → VACANT
+    5. Release a combined commercial space: its other units go back to being
+       vacant and lettable on their own.
     """
     tenant.move_out_date = move_out_date or date.today()
     tenant.move_out_notes = notes
@@ -334,6 +337,7 @@ def move_out_tenant(
     tenant.save(update_fields=["move_out_date", "move_out_notes", "status", "updated_at"])
 
     unit_move_out(tenant.unit)
+    release_space(tenant.unit)
     return tenant
 
 

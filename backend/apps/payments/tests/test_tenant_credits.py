@@ -20,7 +20,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from rest_framework.test import APIClient
 
-from apps.accounts.models import FinancialAuditLog
+from apps.accounts.models import AuditLog
 from apps.buildings.models import Building, Unit, UnitClassification, UnitStatus
 from apps.expenses.models import Account, ExpenseCategory
 from apps.ledger.models import JournalEntry, JournalLine
@@ -511,10 +511,12 @@ class TestControls:
         )
         credits.void_refund(refund, reason="Never handed over", actor=owner, today=TODAY)
         credits.void_credit(credit, reason="Duplicate", actor=owner, today=TODAY)
-        actions = list(FinancialAuditLog.objects.order_by("id").values_list("action", flat=True))
+        actions = list(
+            AuditLog.objects.filter(kind="event").order_by("id").values_list("action", flat=True)
+        )
         assert actions == ["credit.issue", "refund.record", "refund.void", "credit.void"]
         assert all(
-            row.actor_id == owner.pk for row in FinancialAuditLog.objects.all()
+            row.actor_id == owner.pk for row in AuditLog.objects.filter(kind="event")
         )
         assert credit.approval_mode == "owner_self" and credit.approved_by_id == owner.pk
 

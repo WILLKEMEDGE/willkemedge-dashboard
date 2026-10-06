@@ -108,6 +108,39 @@ def token_ok(request: Request) -> bool:
     return bool(provided) and hmac.compare_digest(provided, expected)
 
 
+def _record_run(job: str, result) -> None:
+    """Put the two runs that bill tenants on the director's activity log.
+
+    The reminder and status jobs run daily and change nothing worth reading;
+    billing and statements are what a tenant later asks about ("why was I
+    charged?", "I never got my invoice").
+    """
+    from apps.accounts import audit
+
+    if job == "monthly-arrears" and result:
+        audit.record(
+            action="billing.run",
+            object_type="job",
+            object_id=None,
+            object_label=job,
+            summary=f"Monthly billing raised {result} rent charge{'s' if result != 1 else ''}",
+            new_values={"raised": result},
+        )
+    elif job == "monthly-statements" and isinstance(result, dict):
+        sent, sms = result.get("sent", 0), result.get("sms_sent", 0)
+        failed = result.get("failed", 0) + result.get("sms_failed", 0)
+        if sent or sms or failed:
+            audit.record(
+                action="statements.send",
+                object_type="job",
+                object_id=None,
+                object_label=job,
+                summary=f"Monthly statements: {sent} emailed, {sms} by SMS, {failed} failed",
+                new_values={k: result.get(k, 0) for k in ("sent", "sms_sent", "failed", "sms_failed")},
+                is_financial=False,
+            )
+
+
 class ScheduledJobTriggerView(APIView):
     """Token-gated endpoint that runs one scheduled job synchronously."""
 
@@ -140,5 +173,6 @@ class ScheduledJobTriggerView(APIView):
 
         logger.info("Cron trigger running job=%s", job)
         result = task.apply(args=args).get()
+        _record_run(job, result)
 
         return Response({"status": "ok", "job": job, "result": result}, status=200)
