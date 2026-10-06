@@ -69,6 +69,10 @@ export interface Building {
   notes: string;
   unit_count: number;
   occupied_count: number;
+  /** A cover photo was uploaded; without one the card shows a placeholder. */
+  has_photo?: boolean;
+  /** Changes whenever the photo does, so a cached copy is refreshed. */
+  photo_version?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -29,13 +29,13 @@ import {
 } from "@/components/ui";
 import {
   useBuilding,
+  useBuildingPhotoSrc,
   useBuildings,
   useDeleteBuilding,
 } from "@/hooks/useBuildings";
 import { getErrorMessage } from "@/lib/apiError";
 import { cn } from "@/lib/cn";
 import { toDayFirst, todayIso } from "@/lib/dates";
-import { propertyImage } from "@/lib/images";
 import type { Building, Unit } from "@/lib/types";
 import { api } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -333,6 +333,7 @@ function BuildingCard({ building }: { building: Building & { units?: Unit[] } })
   const [maintenanceUnit, setMaintenanceUnit] = useState<Unit | null>(null);
   const { data: detail, isFetching: loadingUnits } = useBuilding(expanded ? building.id : "");
   const unitsPanelId = useId();
+  const photoSrc = useBuildingPhotoSrc(building);
 
   const occupied = building.occupied_count ?? 0;
   const total = building.unit_count ?? 0;
@@ -348,7 +349,7 @@ function BuildingCard({ building }: { building: Building & { units?: Unit[] } })
           className="relative block h-40 w-full overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           <img
-            src={propertyImage(building.id ?? building.name, "md")}
+            src={photoSrc}
             alt=""
             loading="lazy"
             className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
