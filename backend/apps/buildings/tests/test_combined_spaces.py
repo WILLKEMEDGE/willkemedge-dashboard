@@ -109,15 +109,30 @@ def test_head_status_carries_to_the_whole_space(hospital):
     assert g06.status == UnitStatus.ARREARS
 
 
-def test_move_out_vacates_the_space_but_keeps_it_combined(hospital):
-    head, tenant, (g06, *_rest) = hospital
-    reconfigure_space(head, add=[g06])
+def test_move_out_releases_the_space(hospital):
+    head, tenant, (g06, g07, _g08) = hospital
+    reconfigure_space(head, add=[g06, g07])
 
     move_out_tenant(tenant, dt.date(2026, 9, 30))
 
-    g06.refresh_from_db()
-    assert g06.status == UnitStatus.VACANT
-    assert g06.combined_into == head
+    for unit in (head, g06, g07):
+        unit.refresh_from_db()
+        assert unit.status == UnitStatus.VACANT
+        assert unit.combined_into is None
+    assert head.space_label == "MCG05"
+    assert AuditLog.objects.filter(action="unit.space_release", object_id=head.pk).exists()
+
+
+def test_a_released_unit_can_be_let_on_its_own(hospital):
+    head, tenant, (g06, *_rest) = hospital
+    reconfigure_space(head, add=[g06])
+    move_out_tenant(tenant, dt.date(2026, 9, 30))
+
+    ser = TenantCreateSerializer(data={
+        "first_name": "New", "last_name": "Shop", "id_number": "NEW2", "phone": "+254700000003",
+        "unit": g06.pk, "monthly_rent": "15000", "move_in_date": "2026-10-01",
+    })
+    assert ser.is_valid(), ser.errors
 
 
 @pytest.mark.parametrize("problem", ["occupied", "other_building", "residential", "in_other_space"])
@@ -155,7 +170,9 @@ def test_a_payment_quoting_any_unit_in_the_space_reaches_the_tenant(hospital):
 def test_a_unit_in_a_space_cannot_be_let_on_its_own(hospital):
     head, tenant, (g06, *_rest) = hospital
     reconfigure_space(head, add=[g06])
-    move_out_tenant(tenant, dt.date(2026, 9, 30))  # space is vacant again
+    g06.refresh_from_db()
+    g06.status = UnitStatus.VACANT  # even if it reads vacant, it belongs to the space
+    g06.save(update_fields=["status", "updated_at"])
 
     ser = TenantCreateSerializer(data={
         "first_name": "A", "last_name": "B", "id_number": "NEW1", "phone": "+254700000002",
