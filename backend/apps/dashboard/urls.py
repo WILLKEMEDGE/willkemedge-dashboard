@@ -2,8 +2,8 @@
 from django.urls import path
 
 from .views import DashboardSummaryView
+from .views_accounting import AccountingDashboardView, ReportExportView
 from .views_reports import (
-    AccountingDashboardView,
     AgingArrearsReportView,
     AnnualIncomeSummaryView,
     ArrearsReportView,
@@ -40,6 +40,7 @@ urlpatterns = [
     path("reports/trial-balance/", TrialBalanceView.as_view(), name="trial-balance"),
     path("reports/expense-breakdown/", ExpenseBreakdownReportView.as_view(), name="expense-breakdown"),
     path("reports/accounting/", AccountingDashboardView.as_view(), name="accounting"),
+    path("reports/export/", ReportExportView.as_view(), name="report-export"),
     path("reports/rent-balances/", RentBalancesReportView.as_view(), name="rent-balances"),
     path("reports/rent-overpayments/", RentOverpaymentsReportView.as_view(), name="rent-overpayments"),
     path("reports/expiring-leases/", ExpiringLeasesReportView.as_view(), name="expiring-leases"),

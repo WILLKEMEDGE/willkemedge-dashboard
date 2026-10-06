@@ -3,8 +3,9 @@
  * a table that knows its columns (so screen, CSV and PDF print the same
  * thing), and the export buttons.
  */
-import { Download, FileText, RefreshCw, Search } from "lucide-react";
-import type { ReactNode } from "react";
+import { Download, FileSpreadsheet, FileText, Loader2, RefreshCw, Search } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import toast from "react-hot-toast";
 
 import {
   Button, EmptyState, ErrorState, Skeleton,
@@ -12,22 +13,11 @@ import {
 } from "@/components/ui";
 import { useBuildings } from "@/hooks/useBuildings";
 import { cn } from "@/lib/cn";
+import { downloadFile, type ExportFormat } from "@/lib/downloadPdf";
 
 import { display, kes, monthName, selectCls, type Col } from "./reportFormat";
 
-const BOM = String.fromCharCode(0xfeff);
-
 // ─── export ──────────────────────────────────────────────────────────────────
-function csvCell(value: unknown) {
-  const s = value === null || value === undefined ? "" : String(value);
-  return `"${s.replace(/"/g, '""')}"`;
-}
-
-function escapeHtml(value: unknown) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 export interface ExportSpec<R> {
   title: string;
   subtitle?: string;
@@ -38,59 +28,62 @@ export interface ExportSpec<R> {
   footer?: Record<string, string | number>;
 }
 
-function exportCSV<R>({ filename, cols, rows, footer }: ExportSpec<R>) {
-  const lines = [
-    cols.map((c) => csvCell(c.label)).join(","),
-    ...rows.map((r) => cols.map((c) => csvCell(c.get(r) ?? "")).join(",")),
-  ];
-  if (footer) lines.push(cols.map((c) => csvCell(footer[c.label] ?? "")).join(","));
-  const blob = new Blob([BOM + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+/** CSV / Excel / PDF buttons. Each calls `onDownload(format)` and shows progress and errors. */
+export function DownloadButtons({ onDownload, disabled }: {
+  onDownload: (format: ExportFormat) => Promise<void>;
+  disabled?: boolean;
+}) {
+  const [busy, setBusy] = useState<ExportFormat | null>(null);
+  const run = async (format: ExportFormat) => {
+    setBusy(format);
+    try {
+      await onDownload(format);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "The download failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const button = (format: ExportFormat, label: string, Icon: typeof Download) => (
+    <Button variant="glass" size="sm" disabled={disabled || busy !== null} onClick={() => void run(format)}
+      title={`Download as ${label}`}>
+      {busy === format ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+      {label}
+    </Button>
+  );
+  return (
+    <div className="flex flex-wrap gap-2">
+      {button("csv", "CSV", Download)}
+      {button("xlsx", "Excel", FileSpreadsheet)}
+      {button("pdf", "PDF", FileText)}
+    </div>
+  );
 }
 
-function exportPDF<R>({ title, subtitle, cols, rows, footer }: ExportSpec<R>) {
-  const align = (c: Col<R>) => (c.money || c.numeric ? ' style="text-align:right"' : "");
-  const foot = footer
-    ? `<tfoot><tr>${cols.map((c) => {
-        const v = footer[c.label];
-        const text = v === undefined ? "" : c.money && typeof v === "number" ? kes(v) : v;
-        return `<td${align(c)}>${escapeHtml(text)}</td>`;
-      }).join("")}</tr></tfoot>`
-    : "";
-  const html = `<html><head><title>${escapeHtml(title)}</title>
-  <style>body{font-family:-apple-system,Segoe UI,sans-serif;font-size:11px;margin:24px;color:#181821}
-  h1{font-size:18px;margin:0 0 4px}.brand{color:#636776;font-size:10px;text-transform:uppercase;letter-spacing:.14em;margin-bottom:6px}
-  .sub{color:#636776;font-size:11px;margin-bottom:18px}
-  table{width:100%;border-collapse:collapse}th{background:#F0EDE5;text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#636776}
-  td{padding:7px 10px;border-bottom:1px solid #E1E1E6}tfoot td{font-weight:600;border-top:2px solid #999}</style></head><body>
-  <div class="brand">Wilkem Ventures Property Suite</div><h1>${escapeHtml(title)}</h1>
-  <div class="sub">${escapeHtml(subtitle ?? "")} · Printed ${escapeHtml(new Date().toLocaleString("en-GB"))}</div>
-  <table><thead><tr>${cols.map((c) => `<th${align(c)}>${escapeHtml(c.label)}</th>`).join("")}</tr></thead>
-  <tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td${align(c)}>${escapeHtml(display(c, r))}</td>`).join("")}</tr>`).join("")}</tbody>
-  ${foot}</table></body></html>`;
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.print();
+/** The table on screen, filters applied, as the server's export body. */
+function exportBody<R>({ title, subtitle, filename, cols, rows, footer }: ExportSpec<R>, format: ExportFormat) {
+  const columns = cols.map((c, i) => ({
+    key: `c${i}`, label: c.label, kind: c.money ? "money" : c.numeric ? "number" : "text",
+  }));
+  const cell = (c: Col<R>, value: unknown) =>
+    value === null || value === undefined ? "" : c.numeric && typeof value === "string" ? value : value;
+  return {
+    format, title, filename,
+    subtitle: subtitle ? [subtitle] : [],
+    columns,
+    rows: rows.map((r) => Object.fromEntries(cols.map((c, i) => [`c${i}`, cell(c, c.get(r))]))),
+    footer: footer ? Object.fromEntries(cols.map((c, i) => [`c${i}`, footer[c.label] ?? ""])) : undefined,
+  };
 }
 
 export function ExportBar<R>(spec: ExportSpec<R>) {
-  const disabled = spec.rows.length === 0;
   return (
-    <div className="flex gap-2">
-      <Button variant="glass" size="sm" disabled={disabled} onClick={() => exportCSV(spec)}>
-        <Download className="h-3.5 w-3.5" />CSV
-      </Button>
-      <Button variant="glass" size="sm" disabled={disabled} onClick={() => exportPDF(spec)}>
-        <FileText className="h-3.5 w-3.5" />PDF
-      </Button>
-    </div>
+    <DownloadButtons
+      disabled={spec.rows.length === 0}
+      onDownload={(format) => downloadFile("/reports/export/", {
+        body: exportBody(spec, format), fallback: spec.filename,
+      })}
+    />
   );
 }
 

@@ -389,18 +389,15 @@ def test_balance_sheet_assets_equal_liabilities_plus_equity(
     post_payment(p)
     post_expense(e)
 
-    # Use the view helper
-    from apps.dashboard.views_reports import AccountingDashboardView
-    view = AccountingDashboardView()
-    result = view._tab_balance_sheet(4, 2026)
+    import datetime as _dt
 
-    total_assets = sum(result["assets"].values())
-    total_liabilities = sum(result["liabilities"].values())
-    equity = result["equity"]
+    from apps.ledger.reports import balance_sheet
 
-    assert abs(total_assets - (total_liabilities + equity)) < 0.01, (
-        f"Balance sheet not balanced: assets={total_assets} "
-        f"liabilities={total_liabilities} equity={equity}"
+    result = balance_sheet(_dt.date(2026, 4, 30))
+
+    assert result["balanced"], (
+        f"Balance sheet not balanced: assets={result['total_assets']} "
+        f"liabilities={result['total_liabilities']} equity={result['total_equity']}"
     )
 
 
