@@ -24,7 +24,7 @@ from apps.accounts.models import AuditLog
 from apps.buildings.models import Building, Unit, UnitClassification, UnitStatus
 from apps.expenses.models import Account, ExpenseCategory
 from apps.ledger.models import JournalEntry, JournalLine
-from apps.ledger.reports import monthly_income_statement
+from apps.ledger.reports import profit_and_loss
 from apps.payments import credits
 from apps.payments.aging import aging_buckets
 from apps.payments.credits import CreditError
@@ -49,6 +49,19 @@ TODAY = _dt.date(2026, 9, 15)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+def monthly_income_statement(month: int, year: int) -> dict:
+    """The ledger P&L for one month, its account lines flattened."""
+    import calendar
+
+    pnl = profit_and_loss(
+        _dt.date(year, month, 1), _dt.date(year, month, calendar.monthrange(year, month)[1])
+    )
+    return {
+        **pnl,
+        "expenses": [a for group in pnl["expenses"] for a in group["accounts"]],
+    }
+
 
 def _net(code: str) -> Decimal:
     """Debits less credits on one GL account."""
