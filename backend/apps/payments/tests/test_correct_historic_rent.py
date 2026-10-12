@@ -195,11 +195,13 @@ class TestMR304:
 
         call_command("correct_historic_rent", "--apply")
 
+        # Receipts show in the month the cash arrived, not the month they paid.
         roll = _roll(flat)
         assert roll["6/2026"]["rent"] == "12000.00"
-        assert roll["6/2026"]["paid"] == "10000.00"
-        assert roll["6/2026"]["balance"] == "2000.00"
-        assert roll["7/2026"]["brought_forward"] == "2000.00"
+        assert roll["6/2026"]["paid"] == "1000.00"
+        assert roll["6/2026"]["balance"] == "11000.00"
+        assert roll["7/2026"]["brought_forward"] == "11000.00"
         assert roll["7/2026"]["rent"] == "12000.00"
-        assert roll["7/2026"]["paid"] == "4000.00"
-        assert roll["7/2026"]["balance"] == "10000.00"
+        assert roll["7/2026"]["paid"] == "12000.00"
+        assert roll["8/2026"]["paid"] == "1000.00"
+        assert roll["8/2026"]["balance"] == "10000.00"
