@@ -166,6 +166,16 @@ class Tenant(models.Model):
                 condition=models.Q(status__in=["active", "notice_given"]),
                 name="tenant_id_number_unique_while_current",
             ),
+            # One current tenancy per unit. Nothing else stopped a second
+            # tenant being moved in on top of the first (e.g. after the unit
+            # was hand-set to vacant), which double-bills the unit and splits
+            # its payments between two people. A combined space's tenancy sits
+            # on its head unit, so this covers the whole space.
+            models.UniqueConstraint(
+                fields=["unit"],
+                condition=models.Q(status__in=["active", "notice_given"]),
+                name="tenant_one_current_per_unit",
+            ),
             models.CheckConstraint(
                 condition=models.Q(monthly_rent__gte=0),
                 name="tenant_monthly_rent_non_negative",
@@ -261,7 +271,16 @@ def tenant_document_path(instance: "TenantDocument", filename: str) -> str:
 class TenantDocument(models.Model):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="documents")
     doc_type = models.CharField(max_length=20, choices=DocumentType.choices, default=DocumentType.OTHER)
-    file = models.FileField(upload_to=tenant_document_path)
+    # The document itself, kept in the database. The Render service has no
+    # persistent disk, so anything written to MEDIA_ROOT was wiped on every
+    # deploy (the same reason Building.photo lives in the database). Uploads
+    # are capped at 5 MB; queries that list documents defer this column.
+    data = models.BinaryField(null=True, blank=True, editable=False)
+    content_type = models.CharField(max_length=100, blank=True, editable=False)
+    size = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    # Legacy: where uploads used to be written on disk. Older rows keep their
+    # path; if a deploy wiped the file, the document has to be uploaded again.
+    file = models.FileField(upload_to=tenant_document_path, blank=True)
     original_name = models.CharField(max_length=255)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
@@ -271,3 +290,27 @@ class TenantDocument(models.Model):
 
     def __str__(self) -> str:
         return f"{self.tenant.full_name} — {self.get_doc_type_display()}"
+
+    @property
+    def stored_in_db(self) -> bool:
+        """True when the contents are in the database (safe across deploys).
+
+        Reads ``size``, not ``data``, so it works on querysets that defer the
+        bytes.
+        """
+        return self.size is not None
+
+    def read_bytes(self) -> bytes | None:
+        """The document's contents, or None when nothing readable is stored.
+
+        The database copy first; then a legacy file, if it survived on disk.
+        """
+        if self.stored_in_db:
+            return bytes(self.data) if self.data is not None else b""
+        if self.file:
+            try:
+                with self.file.open("rb") as fh:
+                    return fh.read()
+            except OSError:
+                return None
+        return None
