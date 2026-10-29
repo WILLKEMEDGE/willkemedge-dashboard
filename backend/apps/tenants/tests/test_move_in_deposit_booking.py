@@ -176,6 +176,28 @@ class MoveInDepositBookingTests(APITestCase):
         assert not Payment.objects.exists()
         assert not JournalEntry.objects.filter(source_type="payment").exists()
 
+    def test_a_deposit_coming_through_reconciliation_is_agreed_not_booked(self):
+        """Bank and M-Pesa money arrives on the Co-op feed; booking it here as
+        well was the double that staff then voided."""
+        unit = self._vacant("WED1J", "20000")
+
+        response = self._register(unit, deposit_paid="20000", deposit_via_reconciliation=True)
+
+        assert response.status_code == status.HTTP_201_CREATED, response.data
+        tenant = Tenant.objects.get()
+        assert tenant.deposit_paid == D("0")
+        assert tenant.agreed_deposit == D("20000")
+        assert not Payment.objects.exists()
+
+    def test_reconciliation_needs_the_agreed_figure(self):
+        unit = self._vacant("WED1K", "20000")
+
+        response = self._register(unit, deposit_paid="0", deposit_via_reconciliation=True)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "deposit_paid" in response.data
+        assert not Tenant.objects.exists()
+
     def test_a_caretaker_registered_rent_free_is_not_billed(self):
         """The create endpoint honours the exemption, not only the seeder."""
         unit = self._vacant("WEDCH", "0")

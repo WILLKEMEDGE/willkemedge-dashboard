@@ -61,6 +61,9 @@ const createSchema = z
       .string()
       .optional()
       .refine(isNonNegativeAmountOrBlank, "Enter a valid amount"),
+    // "reconciliation": coming by bank / M-Pesa on the Co-op feed, so only the
+    // agreed figure is recorded and the credit is split when it is assigned.
+    deposit_arrives: z.enum(["now", "reconciliation"]),
     deposit_source: z.enum(["cash", "mpesa", "bank", "cheque"]).optional(),
     deposit_date: z.string().optional(),
     deposit_reference: z.string().optional(),
@@ -93,9 +96,16 @@ const createSchema = z
         message: "Enter an amount greater than 0, or untick 'charge rent'",
       });
     }
+    if (values.deposit_arrives === "reconciliation" && !isPositiveAmount(values.deposit_paid ?? "")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["deposit_paid"],
+        message: "Enter the deposit agreed, so Reconciliation knows how much of the payment is deposit",
+      });
+    }
     // A deposit is usually paid before the keys are handed over, so only a
     // future date is wrong.
-    if (values.deposit_date && values.deposit_date > todayIso()) {
+    if (values.deposit_arrives === "now" && values.deposit_date && values.deposit_date > todayIso()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["deposit_date"],
@@ -131,23 +141,33 @@ export function CreateTenantForm({ onClose }: { onClose: () => void }) {
     resolver: zodResolver(createSchema),
     defaultValues: {
       deposit_paid: "0",
+      deposit_arrives: "now",
       deposit_source: "cash",
       is_billable: true,
       move_in_date: todayIso(),
     },
   });
 
-  const [unitId, rent, deposit, isBillable, moveIn, firstRentMonth] = watch([
+  const [unitId, rent, deposit, isBillable, moveIn, firstRentMonth, arrives, source] = watch([
     "unit", "monthly_rent", "deposit_paid", "is_billable", "move_in_date", "first_rent_month",
+    "deposit_arrives", "deposit_source",
   ]);
   const selectedUnit = vacantUnits?.find((u) => u.id === Number(unitId));
   const expected = expectedDeposit(rent ?? "", selectedUnit?.classification);
   const depositAmount = Number(deposit ?? 0);
-  const booksMoney = Number.isFinite(depositAmount) && depositAmount > 0;
+  const viaReconciliation = arrives === "reconciliation";
+  const booksMoney = !viaReconciliation && Number.isFinite(depositAmount) && depositAmount > 0;
 
   const onSubmit = async (values: CreateFormValues) => {
-    const { due_day, first_rent_month, ...rest } = values;
+    const { due_day, first_rent_month, deposit_arrives, ...rest } = values;
     const payload: Record<string, unknown> = { ...rest };
+    if (deposit_arrives === "reconciliation") {
+      // Nothing is received yet, so there is no how / when / reference to send.
+      payload.deposit_via_reconciliation = true;
+      delete payload.deposit_source;
+      delete payload.deposit_date;
+      delete payload.deposit_reference;
+    }
     // Omitted entirely when blank, so the API applies its own default rather
     // than being handed an empty string or a zero.
     if (due_day) payload.due_day = Number(due_day);
@@ -222,9 +242,31 @@ export function CreateTenantForm({ onClose }: { onClose: () => void }) {
           Recorded against the deposits the landlord holds (a liability), not as
           rental income. Leave at 0 if no deposit was taken.
         </p>
+        <div className="mb-4 space-y-2 text-sm" role="radiogroup" aria-label="How the deposit is paid">
+          <label className="flex items-start gap-2.5">
+            <input type="radio" value="now" {...register("deposit_arrives")} className="mt-1 accent-sage-600" />
+            <span>
+              <span className="font-medium text-ink-900">Received now — usually cash or cheque</span>
+              <span className="block text-[11px] text-ink-500">Booked as the tenant&apos;s deposit straight away.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2.5">
+            <input type="radio" value="reconciliation" {...register("deposit_arrives")} className="mt-1 accent-sage-600" />
+            <span>
+              <span className="font-medium text-ink-900">Paid by bank or M-Pesa — assign it in Reconciliation</span>
+              <span className="block text-[11px] text-ink-500">
+                Nothing is booked now. When the payment shows up in Reconciliation, assign it to this
+                tenant: the deposit part is filled in for you and the rest goes to rent.
+              </span>
+            </span>
+          </label>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <Field label="Deposit received (KES)" error={errors.deposit_paid?.message}>
+            <Field
+              label={viaReconciliation ? "Deposit agreed (KES)" : "Deposit received (KES)"}
+              error={errors.deposit_paid?.message}
+            >
               <input {...register("deposit_paid")} className={inputCls} inputMode="decimal" />
             </Field>
             {expected !== null && (
@@ -267,6 +309,12 @@ export function CreateTenantForm({ onClose }: { onClose: () => void }) {
             />
           </Field>
         </div>
+        {booksMoney && (source === "mpesa" || source === "bank") && (
+          <p className="mt-3 rounded-md bg-warning-soft px-3 py-2.5 text-xs text-warning">
+            Money paid to the paybill or the bank account also arrives in Reconciliation. If that is
+            how it was paid, choose &ldquo;Paid by bank or M-Pesa&rdquo; above, or it will be booked twice.
+          </p>
+        )}
       </fieldset>
 
       <label className="flex items-start gap-2.5 text-sm">

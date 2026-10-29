@@ -137,6 +137,33 @@ def test_default_never_reaches_past_the_card_to_the_one_month_rule():
 
 
 @pytest.mark.django_db
+def test_default_reads_the_agreed_deposit_of_a_letting_registered_via_reconciliation():
+    """Registered as "coming by bank": nothing on the card yet, only the agreement."""
+    tenant = _tenant(card_deposit="0")
+    tenant.agreed_deposit = Decimal("20000")
+    tenant.save()
+
+    assert default_deposit_part(tenant, Decimal("40000")) == Decimal("20000")
+
+
+@pytest.mark.django_db
+@patch("apps.payments.tasks.send_deposit_receipt.delay")
+def test_a_letting_registered_via_reconciliation_splits_its_first_credit(_receipt, owner):
+    tenant = _tenant(rent="20000", card_deposit="0")
+    tenant.agreed_deposit = Decimal("20000")
+    tenant.save()
+    event = _event("CB20", "40000")
+
+    resp = owner.post(f"{URL}{event.id}/assign/", {"tenant": tenant.id}, format="json")
+
+    assert resp.status_code == 200, resp.content
+    assert _live(tenant, PaymentType.DEPOSIT) == Decimal("20000")
+    assert _live(tenant, PaymentType.RENT) == Decimal("20000")
+    tenant.refresh_from_db()
+    assert tenant.deposit_paid == Decimal("20000")
+
+
+@pytest.mark.django_db
 def test_default_is_nothing_when_the_deposit_was_already_booked_in_cash():
     tenant = _tenant(card_deposit="25000")
     allocate_payment_fifo(
