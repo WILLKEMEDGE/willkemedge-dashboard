@@ -124,9 +124,11 @@ def deposit_still_to_receive(tenant) -> Decimal:
 
     The card (``deposit_paid``) is what the office recorded the letting as
     taking. It runs ahead of the books when the deposit comes in later through
-    the bank rather than being keyed in as cash at registration.
+    the bank rather than being keyed in as cash at registration. A letting
+    registered as "coming through Reconciliation" has nothing on the card yet,
+    only the ``agreed_deposit`` — so the larger of the two is what is due.
     """
-    card = Decimal(tenant.deposit_paid or ZERO)
+    card = max(Decimal(tenant.deposit_paid or ZERO), Decimal(tenant.agreed_deposit or ZERO))
     return max(card - deposit_held_on_books(tenant), ZERO).quantize(CENTS)
 
 

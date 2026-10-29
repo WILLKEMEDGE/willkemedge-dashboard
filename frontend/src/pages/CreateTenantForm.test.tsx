@@ -194,6 +194,54 @@ describe("CreateTenantForm", () => {
     // nothing here worth asserting in jsdom.
   });
 
+  describe("a deposit paid by bank or M-Pesa", () => {
+    async function chooseReconciliation(user: ReturnType<typeof userEvent.setup>) {
+      await fillRequiredIdentity(user);
+      await user.selectOptions(screen.getByLabelText("Unit *"), "1");
+      await user.type(screen.getByLabelText("Monthly rent (KES) *"), "20000");
+      await user.click(screen.getByRole("radio", { name: /Paid by bank or M-Pesa/ }));
+    }
+
+    it("sends the agreed figure and nothing about how it was received", async () => {
+      const user = userEvent.setup();
+      await chooseReconciliation(user);
+      const box = screen.getByLabelText("Deposit agreed (KES)");
+      await user.clear(box);
+      await user.type(box, "20000");
+      expect(screen.getByLabelText("How it was received")).toBeDisabled();
+
+      await user.click(screen.getByRole("button", { name: /Register/ }));
+
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+      const sent = submitted();
+      expect(sent).toMatchObject({ deposit_paid: "20000", deposit_via_reconciliation: true });
+      expect(sent).not.toHaveProperty("deposit_source");
+      expect(sent).not.toHaveProperty("deposit_date");
+      expect(sent).not.toHaveProperty("deposit_arrives");
+    });
+
+    it("needs the agreed figure", async () => {
+      const user = userEvent.setup();
+      await chooseReconciliation(user);
+
+      await user.click(screen.getByRole("button", { name: /Register/ }));
+
+      expect(await screen.findByText(/Enter the deposit agreed/)).toBeInTheDocument();
+      expect(mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("warns when an M-Pesa deposit is about to be booked as received", async () => {
+      const user = userEvent.setup();
+      await fillRequiredIdentity(user);
+      const box = screen.getByLabelText("Deposit received (KES)");
+      await user.clear(box);
+      await user.type(box, "20000");
+      await user.selectOptions(screen.getByLabelText("How it was received"), "mpesa");
+
+      expect(screen.getByText(/it will be booked twice/)).toBeInTheDocument();
+    });
+  });
+
   describe("the deposit date", () => {
     async function fillDeposit(user: ReturnType<typeof userEvent.setup>, moveIn: string, paid: string) {
       await fillRequiredIdentity(user);

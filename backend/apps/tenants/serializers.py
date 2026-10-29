@@ -348,6 +348,14 @@ class TenantCreateSerializer(serializers.ModelSerializer):
         required=False, allow_null=True,
         help_text="First month charged rent. Blank = the move-in month.",
     )
+    # Bank and M-Pesa money reaches the books through the Co-op feed. Booking it
+    # here as well made a second deposit that staff then voided as a "double",
+    # and the credit itself went on as rent.
+    deposit_via_reconciliation = serializers.BooleanField(
+        required=False, default=False, write_only=True,
+        help_text="The deposit is coming by bank or M-Pesa: record it as agreed, "
+                  "book nothing now, and split it off the credit in Reconciliation.",
+    )
 
     class Meta:
         model = Tenant
@@ -357,6 +365,7 @@ class TenantCreateSerializer(serializers.ModelSerializer):
             "monthly_rent", "deposit_paid", "due_day", "move_in_date", "first_rent_month",
             "notes", "is_billable", "billing_frequency",
             "deposit_source", "deposit_date", "deposit_reference",
+            "deposit_via_reconciliation",
         ]
         extra_kwargs = MONEY_AND_DAY_LIMITS
 
@@ -370,12 +379,23 @@ class TenantCreateSerializer(serializers.ModelSerializer):
                 "deposit_date": "The deposit cannot be dated in the future.",
             })
         attrs["first_rent_month"] = clean_first_rent_month(attrs.get("first_rent_month"), move_in)
+        if attrs.get("deposit_via_reconciliation"):
+            # Nothing received yet: the figure is what was agreed, and the card
+            # shows nothing held, so the view books no deposit. The split on the
+            # incoming credit reads the agreed figure (deposit_still_to_receive).
+            agreed = attrs.get("deposit_paid") or Decimal("0")
+            if agreed <= 0:
+                raise serializers.ValidationError({
+                    "deposit_paid": "Enter the deposit agreed, so Reconciliation knows how much of the payment is deposit.",
+                })
+            attrs["agreed_deposit"] = agreed
+            attrs["deposit_paid"] = Decimal("0")
         return attrs
 
     def create(self, validated_data):
         # Pulled off before the model is built — they belong to the Payment the
         # view posts afterwards, not to the Tenant row.
-        for key in ("deposit_source", "deposit_date", "deposit_reference"):
+        for key in ("deposit_source", "deposit_date", "deposit_reference", "deposit_via_reconciliation"):
             validated_data.pop(key, None)
         return super().create(validated_data)
 
